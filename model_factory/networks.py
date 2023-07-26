@@ -399,7 +399,6 @@ class RNN(nn.Module):
         self.x = torch.randn((self.J.shape[0], batch_size)) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
-# TODO: Use einsum to get recurrence input over batches
 
 class ThalamicRNN(nn.Module):
     """ Base class for recurrent neural networks"""
@@ -538,7 +537,7 @@ class MultiHeadMLP(nn.Module):
 
         combined_input = 0
         for input_name, value in inputs.items():
-            combined_input += self.input_mlps[input_name](value)
+            combined_input += self.input_mlps[input_name](value.T)
 
         y = self.shared_mlp(combined_input)
         return y
