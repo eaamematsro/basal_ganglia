@@ -399,14 +399,15 @@ class RNN(nn.Module):
         self.x = torch.randn((self.J.shape[0], batch_size)) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
-#TODO: Use einsum to get recurrence input over batches
+# TODO: Use einsum to get recurrence input over batches
+
 class ThalamicRNN(nn.Module):
     """ Base class for recurrent neural networks"""
 
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
                  device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15):
-        super(RNN, self).__init__()
+        super(ThalamicRNN, self).__init__()
 
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -423,7 +424,7 @@ class ThalamicRNN(nn.Module):
 
         if input_sources is not None:
             for input_name, (input_size, learnable) in input_sources.items():
-                input_mat = np.random.randn(nneurons, ) / np.sqrt(nneurons)
+                input_mat = np.random.randn(nneurons, input_size) / np.sqrt(nneurons)
                 input_tens = torchify(input_mat, device)
                 if learnable:
                     self.I[input_name] = nn.Parameter(input_tens)
@@ -441,8 +442,10 @@ class ThalamicRNN(nn.Module):
         self.dt = dt
         self.tau = tau
 
-    def forward(self, inputs: Dict[str, torch.Tensor], r_thalamic, noise_scale: float = 0,
+    def forward(self, r_thalamic, inputs: Optional[Dict[str, torch.Tensor]] = None, noise_scale: float = 0,
                 validate_inputs: bool = False):
+        if inputs is None:
+            inputs = {}
         if validate_inputs:
             input_names = set(list(inputs.keys()))
             assert input_names.intersection(self.input_names) == input_names
@@ -451,10 +454,9 @@ class ThalamicRNN(nn.Module):
             out += self.I[input_name] @ input_value
 
         v_batch = torch.einsum('jk, ji -> jik', r_thalamic, self.V)
-        J = torch.einsum('ij, jlk -> jlk', self.U, v_batch)
-        J_rec = J + self.J
+        J = torch.einsum('ij, jlk -> ilk', self.U, v_batch)
+        J_rec = J + self.J[:, :, None]
         rec_input = torch.einsum('ijk, jk -> ik', J_rec, self.r)
-
         x = self.x + self.dt / self.tau * (
                 -self.x + rec_input + self.B + out
                 + noise_scale * torch.randn(self.x.shape)

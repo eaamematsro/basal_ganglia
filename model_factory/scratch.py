@@ -1,25 +1,24 @@
 import numpy as np
 import torch
-latents = 5
-outputs = 100
-batches = 10
-U = torch.rand((outputs, latents))
-V = torch.randn((latents, outputs))
-r = torch.randn((latents, batches))
-cur_value = torch.randn((outputs, batches))
-for batch in range(batches):
-    r[:, batch] *= batch
+from networks import MultiHeadMLP, ThalamicRNN
+from factory_utils import torchify
 
-v_batch = torch.einsum('jk, ji -> jik', r, V)
-j_batch = torch.einsum('ij, jlk -> ilk', U, v_batch)
-out_value = torch.einsum('ijk, jk -> ik', j_batch, cur_value)
+batches = 5
+input_size = 5
+bg_rank = 10
 
-truth_vals = []
-difference = []
-for batch in range(batches):
-    true_val = j_batch[:, :, batch] @ cur_value[:, batch]
-    true_valj = U @ torch.diag(r[:, batch]) @ V
-    truth_vals.append(np.isclose(true_val, out_value[:, batch]).all())
-    difference.append(torch.linalg.norm(true_val - out_value[:, batch]))
-print(truth_vals)
-print(difference)
+input_sources = {
+    'trigger': (10, True),
+}
+
+inputs = {'trigger': torchify(np.random.randn(10, batches)),
+            'go': torchify(np.random.randn(10, batches)),
+          }
+bg = torchify(np.random.randn(bg_rank, batches))
+
+test_model = ThalamicRNN(
+    nbg=bg_rank,
+    input_sources=input_sources
+)
+test_model.reset_state(batch_size=batches)
+test_model(bg, inputs, validate_inputs=True)
