@@ -399,6 +399,73 @@ class RNN(nn.Module):
         self.x = torch.randn((self.J.shape[0], batch_size)) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
+#TODO: Use einsum to get recurrence input over batches
+class ThalamicRNN(nn.Module):
+    """ Base class for recurrent neural networks"""
+
+    def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
+                 g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+                 device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15):
+        super(RNN, self).__init__()
+
+        if device is None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            device = self.device
+        else:
+            self.device = device
+
+        if non_linearity is None:
+            non_linearity = nn.Softplus()
+
+        self.nonlinearity = non_linearity
+
+        self.I = {}
+
+        if input_sources is not None:
+            for input_name, (input_size, learnable) in input_sources.items():
+                input_mat = np.random.randn(nneurons, ) / np.sqrt(nneurons)
+                input_tens = torchify(input_mat, device)
+                if learnable:
+                    self.I[input_name] = nn.Parameter(input_tens)
+                else:
+                    self.I[input_name] = input_tens
+
+        J_mat = (g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons))
+        J_mat = torchify(J_mat, device=device)
+        self.input_names = set(list(self.I.keys()))
+        self.J = nn.Parameter(J_mat)
+        self.B = nn.Parameter(torchify(np.random.randn(nneurons, 1), device))
+        self.U = torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons), device)
+        self.V = torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons), device)
+        self.x, self.r = None, None
+        self.dt = dt
+        self.tau = tau
+
+    def forward(self, inputs: Dict[str, torch.Tensor], r_thalamic, noise_scale: float = 0,
+                validate_inputs: bool = False):
+        if validate_inputs:
+            input_names = set(list(inputs.keys()))
+            assert input_names.intersection(self.input_names) == input_names
+        out = 0
+        for input_name, input_value in inputs.items():
+            out += self.I[input_name] @ input_value
+
+
+
+        x = self.x + self.dt / self.tau * (
+                -self.x + (self.J + self.U @ torch.diag(r_thalamic) @ self.V) @ self.r + self.B + out
+                + noise_scale * torch.randn(self.x.shape)
+        )
+        r = self.nonlinearity(x)
+        self.x = x
+        self.r = r
+        return self.x, self.r
+
+    def reset_state(self, batch_size: int = 10):
+        self.x = torch.randn((self.J.shape[0], batch_size)) / np.sqrt(self.J.shape[0])
+        self.r = self.nonlinearity(self.x)
+
+
 
 class MLP(nn.Module):
     def __init__(self, layer_sizes: Optional[Tuple[int, ...]] = None, non_linearity: Optional[nn.Module] = None,
@@ -473,11 +540,3 @@ class MultiHeadMLP(nn.Module):
         return y
 
 
-if __name__ == '__main__':
-    input_data = {
-        'input_1': torch.randn((500, 10)),
-        'input_2': torch.randn((500, 10)),
-    }
-    test = MultiHeadMLP(input_size=10, output_size=5)
-    out = test(input_data)
-    pdb.set_trace()

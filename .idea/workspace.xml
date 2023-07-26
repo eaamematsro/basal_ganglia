@@ -5,8 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="068be01d-770f-4bcd-8be5-cef8b961c4d1" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/tasks/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/model_factory/architectures.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/architectures.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/networks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/networks.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -52,7 +52,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1690372511527</updated>
-      <workItem from="1690372513014" duration="2526000" />
+      <workItem from="1690372513014" duration="5153000" />
     </task>
     <servers />
   </component>
