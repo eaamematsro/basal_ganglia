@@ -450,10 +450,13 @@ class ThalamicRNN(nn.Module):
         for input_name, input_value in inputs.items():
             out += self.I[input_name] @ input_value
 
-
+        v_batch = torch.einsum('jk, ji -> jik', r_thalamic, self.V)
+        J = torch.einsum('ij, jlk -> jlk', self.U, v_batch)
+        J_rec = J + self.J
+        rec_input = torch.einsum('ijk, jk -> ik', J_rec, self.r)
 
         x = self.x + self.dt / self.tau * (
-                -self.x + (self.J + self.U @ torch.diag(r_thalamic) @ self.V) @ self.r + self.B + out
+                -self.x + rec_input + self.B + out
                 + noise_scale * torch.randn(self.x.shape)
         )
         r = self.nonlinearity(x)
@@ -464,7 +467,6 @@ class ThalamicRNN(nn.Module):
     def reset_state(self, batch_size: int = 10):
         self.x = torch.randn((self.J.shape[0], batch_size)) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
-
 
 
 class MLP(nn.Module):
