@@ -8,8 +8,8 @@ from typing import Callable, Optional, Dict, List, Tuple
 
 
 class ConsolidationNetwork(nn.Module):
-    def __init__(self, nneurons: int = 100, nganglia: int = 20, save_path: str = None, lr: float =1e-3,
-                 device: torch.device = None, ncontexts: int = 2, dt: float=5e-2, tau: float = .15):
+    def __init__(self, nneurons: int = 100, nganglia: int = 20, save_path: str = None, lr: float = 1e-3,
+                 device: torch.device = None, ncontexts: int = 2, dt: float = 5e-2, tau: float = .15):
         super().__init__()
 
         if device is None:
@@ -18,16 +18,17 @@ class ConsolidationNetwork(nn.Module):
         else:
             self.device = device
 
-        J_mat = (1.2 * np.random.randn(nneurons, nneurons)/np.sqrt(nneurons))
+        J_mat = (1.2 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons))
         self.bg_rank = nganglia
         self.J = nn.Parameter(torch.from_numpy(J_mat.astype(np.float32)).to(device))
         self.U = torch.from_numpy((np.random.randn(nneurons, nganglia) / np.sqrt(nneurons)).astype(np.float32)
-                                   ).to(device)
+                                  ).to(device)
         self.V = torch.from_numpy((np.random.randn(nganglia, nneurons) / np.sqrt(nneurons)).astype(np.float32)
-                                   ).to(device)
+                                  ).to(device)
         self.B_m1 = nn.Parameter(torch.from_numpy(np.random.randn(nneurons, 1).astype(np.float32)).to(device))
         self.B_bg = nn.Parameter(torch.from_numpy(np.zeros(nganglia).astype(np.float32)).to(device))
-        self.Wout = nn.Parameter(torch.from_numpy((np.random.randn(1, nneurons)/np.sqrt(nneurons)).astype(np.float32)).to(device))
+        self.Wout = nn.Parameter(
+            torch.from_numpy((np.random.randn(1, nneurons) / np.sqrt(nneurons)).astype(np.float32)).to(device))
         self.I_go = nn.Parameter(torch.from_numpy(np.random.randn(nneurons, 1).astype(np.float32)).to(device))
         # self.I_fix = nn.Parameter(torch.from_numpy(np.random.randn(nneurons, 1).astype(np.float32)).to(device))
         # self.I_speed = nn.Parameter(torch.from_numpy(np.random.randn(nneurons, 1).astype(np.float32)).to(device))
@@ -48,7 +49,7 @@ class ConsolidationNetwork(nn.Module):
         self.create_gos_and_targets()
         # self.create_targets()
 
-    def create_gos(self, total_time: int=500, n_unique_pulses: int = 10):
+    def create_gos(self, total_time: int = 500, n_unique_pulses: int = 10):
         device = self.device
         pulse_times = np.linspace(total_time * 1 / 10, total_time * 4 / 10, n_unique_pulses).astype(int)
 
@@ -89,7 +90,7 @@ class ConsolidationNetwork(nn.Module):
                 targets[(pulse + delay + 3 * period):, idx] = 0
         self.Targets = targets
 
-    def create_gos_and_targets(self, total_time: int=500, n_unique_pulses: int = 10, pulse_width: int = 10,
+    def create_gos_and_targets(self, total_time: int = 500, n_unique_pulses: int = 10, pulse_width: int = 10,
                                frequency: float = 1, delay: int = 0, amplitude: int = 1):
         device = self.device
         pulse_times = np.linspace(total_time * 1 / 10, total_time * 4 / 10, n_unique_pulses).astype(int)
@@ -108,7 +109,6 @@ class ConsolidationNetwork(nn.Module):
             targets[(pulse_start + delay + 3 * period):, idx] = 0
             pulses[(pulse_start + 3 * period): (pulse_start + pulse_width + 3 * period), idx] = -1
 
-
         pulses = gaussian_filter1d(pulses, sigma=1, axis=0)
         pulses = torch.from_numpy(pulses.astype(np.float32)).to(device)
         fixation = gaussian_filter1d(fixation, sigma=1, axis=0)
@@ -122,7 +122,7 @@ class ConsolidationNetwork(nn.Module):
         return pulses
 
     def forward(self, targets: np.ndarray = None, triggers: np.ndarray = None,
-                include_bg: bool = True, speed: int=1,
+                include_bg: bool = True, speed: int = 1,
                 noise_scale: float = 0.15):
         assert targets.shape[1] == triggers.shape[0], 'The number of targets must be equal to the number of go cues.'
         device = self.device
@@ -138,13 +138,13 @@ class ConsolidationNetwork(nn.Module):
             rthal = torch.diag(torch.zeros(self.U.shape[1], device=device))
 
         for ti in range(self.total_time):
-            xm1 = xm1 + self.dt/self.tau * (-xm1 + (self.J + self.U @ rthal @ self.V) @ rm1 + self.B_m1 +
-                                   self.I_go * go_cues[ti] +
-                                            torch.randn(rm1.shape, device=device) * np.sqrt(2 * noise_scale ** 2 *
-                                                                             (self.tau / self.dt)))
+            xm1 = xm1 + self.dt / self.tau * (-xm1 + (self.J + self.U @ rthal @ self.V) @ rm1 + self.B_m1 +
+                                              self.I_go * go_cues[ti] +
+                                              torch.randn(rm1.shape, device=device) * np.sqrt(2 * noise_scale ** 2 *
+                                                                                              (self.tau / self.dt)))
             rm1 = self.neural_nonlinearity(xm1)
             position_store[ti] = self.Wout @ rm1
-        loss = ((Targets - position_store)**2).mean(axis=0).mean()
+        loss = ((Targets - position_store) ** 2).mean(axis=0).mean()
         plt.clf()
         plt.plot(targets[:, 0], label='Target')
         plt.plot(go_cues[:, 0].cpu(), label='Go Cue')
@@ -172,7 +172,7 @@ class ConsolidationNetwork(nn.Module):
             rm1 = self.neural_nonlinearity(xm1)
             for ti in range(self.total_time):
                 xm1 = xm1 + self.dt / self.tau * (-xm1 + (self.J + self.U @ rthal @ self.V)
-                                                                  @ rm1 + self.B_m1 +
+                                                  @ rm1 + self.B_m1 +
                                                   self.I_go * go_cues[ti])
                 rm1 = self.neural_nonlinearity(xm1)
                 position_store[ti, idx] = (self.Wout @ rm1)[:, 0]
@@ -195,12 +195,12 @@ class ConsolidationNetwork(nn.Module):
         plt.plot(go_cues.cpu(), label='Go Cue', color='red')
 
         for idx in range(samples):
-            rthal = torch.diag( torch.randn(self.B_bg.shape, device=device) * magnitude + self.B_bg)
+            rthal = torch.diag(torch.randn(self.B_bg.shape, device=device) * magnitude + self.B_bg)
             xm1 = torch.randn((self.J.shape[0], samples), device=device) / np.sqrt(self.J.shape[0])
             rm1 = self.neural_nonlinearity(xm1)
             for ti in range(self.total_time):
                 xm1 = xm1 + self.dt / self.tau * (-xm1 + (self.J + self.U @ rthal @ self.V)
-                                                                  @ rm1 + self.B_m1 +
+                                                  @ rm1 + self.B_m1 +
                                                   self.I_go * go_cues[ti])
                 rm1 = self.neural_nonlinearity(xm1)
                 position_store[ti, idx] = (self.Wout @ rm1)[:, 0]
@@ -213,7 +213,7 @@ class ConsolidationNetwork(nn.Module):
         plt.figure()
         plt.plot(vars)
         plt.xlabel('Time'
-        )
+                   )
         plt.ylabel('Variance')
         plt.pause(1)
         pdb.set_trace()
@@ -281,7 +281,7 @@ class ConsolidationNetwork(nn.Module):
                 j_lr = (self.U.detach().cpu().numpy() @ np.diag(g * self.B_bg.detach().cpu().numpy())
                         @ self.V.detach().cpu().numpy())
                 evals_lr = np.linalg.eigvals(j0 + j_lr)
-                plt.scatter(np.real(evals_lr), np.imag(evals_lr), c=g*np.ones(j_lr.shape[0]), label='Perturbed',
+                plt.scatter(np.real(evals_lr), np.imag(evals_lr), c=g * np.ones(j_lr.shape[0]), label='Perturbed',
                             vmin=-1, vmax=1)
             plt.colorbar(label='gain')
             fig_path = save_path + '/eigenspectrum_interpolation'
@@ -301,11 +301,11 @@ class ConsolidationNetwork(nn.Module):
         self.g1, self.g2 = g1, g2
         U, S, Vh = np.linalg.svd(J)
         device = self.device
-        self.U = (torch.from_numpy(((np.sqrt(1 - g1**2)) * U[:, :self.bg_rank]
-                                   + g1**2 * np.random.randn(J.shape[0], self.bg_rank)).astype(np.float32)
+        self.U = (torch.from_numpy(((np.sqrt(1 - g1 ** 2)) * U[:, :self.bg_rank]
+                                    + g1 ** 2 * np.random.randn(J.shape[0], self.bg_rank)).astype(np.float32)
                                    ).to(device))
-        self.V = (torch.from_numpy(((np.sqrt(1 - g2**2)) * Vh[:self.bg_rank]
-                                   + g2 ** 2 * np.random.randn(self.bg_rank, J.shape[0])).astype(np.float32)
+        self.V = (torch.from_numpy(((np.sqrt(1 - g2 ** 2)) * Vh[:self.bg_rank]
+                                    + g2 ** 2 * np.random.randn(self.bg_rank, J.shape[0])).astype(np.float32)
                                    ).to(device))
         self.B_bg = nn.Parameter(torch.from_numpy(np.zeros(self.bg_rank).astype(np.float32)).to(device))
         return None
@@ -324,9 +324,9 @@ class ConsolidationNetwork(nn.Module):
         p = np.polyfit(np.arange(len(self.Loss)), np.log(self.Loss), 1)
         kappa = p[0]
         curr_dict = {'br_rank': [self.bg_rank], 'g1': [self.g1],
-                                 'g2': [self.g2], 'Loss': [self.Loss[-1]],
-                                     'Effective_lr': [-kappa],
-                                     'Effective_lr0': [-self.kappaog]}
+                     'g2': [self.g2], 'Loss': [self.Loss[-1]],
+                     'Effective_lr': [-kappa],
+                     'Effective_lr0': [-self.kappaog]}
         data_dict = {**curr_dict, **self.new_targ_params}
         if save_path.exists():
             data = pd.read_csv(save_path)
@@ -340,7 +340,8 @@ class ConsolidationNetwork(nn.Module):
 
 class RNN(nn.Module):
     """ Base class for recurrent neural networks"""
-    def __init__(self, nneurons: int = 100, non_linearity: Optional[Callable] = None,
+
+    def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
                  device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15):
         super(RNN, self).__init__()
@@ -369,7 +370,7 @@ class RNN(nn.Module):
 
         J_mat = (g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons))
         J_mat = torchify(J_mat, device=device)
-        self.input_names = list(self.I.keys())
+        self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(nneurons, 1), device))
         self.x, self.r = None, None
@@ -379,8 +380,8 @@ class RNN(nn.Module):
     def forward(self, inputs: Dict[str, torch.Tensor], noise_scale: float = 0,
                 validate_inputs: bool = False):
         if validate_inputs:
-            input_list = list(inputs.keys())
-            assert input_list in self.input_names
+            input_names = set(list(inputs.keys()))
+            assert input_names.intersection(self.input_names) == input_names
         out = 0
         for input_name, input_value in inputs.items():
             out += self.I[input_name] @ input_value
@@ -398,5 +399,85 @@ class RNN(nn.Module):
         self.x = torch.randn((self.J.shape[0], batch_size)) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
+
+class MLP(nn.Module):
+    def __init__(self, layer_sizes: Optional[Tuple[int, ...]] = None, non_linearity: Optional[nn.Module] = None,
+                 input_size: Optional[int] = 150, output_size: Optional[int] = 10):
+        super(MLP, self).__init__()
+        if layer_sizes is None or not (type(layer_sizes) == tuple):
+            layer_sizes = (100, 50,)
+
+        if non_linearity is None:
+            non_linearity = nn.Softplus()
+
+        modules = []
+        layer_sizes = layer_sizes + (output_size,)
+        previous_size = input_size
+        for size in layer_sizes:
+            modules.append(
+                nn.Linear(previous_size, size)
+            )
+            modules.append(non_linearity)
+            previous_size = size
+
+        self.mlp = nn.Sequential(*modules)
+
+    def forward(self, input):
+        """
+
+        :param input: [batch, inputs]
+        :return:
+        """
+        y = self.mlp(input)
+        return y
+
+
+class MultiHeadMLP(nn.Module):
+    def __init__(self, independent_layers: Optional[Dict[str, Tuple[Tuple[int, ...], int]]] = None,
+                 shared_layer_sizes: Optional[Tuple[int, ...]] = None,
+                 non_linearity: Optional[nn.Module] = None,
+                 input_size: Optional[int] = 150, output_size: Optional[int] = 10):
+        super(MultiHeadMLP, self).__init__()
+        if independent_layers is None:
+            independent_layers = {
+                'input_1': ((100, 50), 10),
+                'input_2': ((100, 50), 10)
+            }
+
+        assert len(independent_layers) > 1, 'There are less than one input heads. Consider using MLP instead.'
+        self.input_names = set(list(independent_layers.keys()))
+        self.input_mlps = {}
+        for input_name, (input_sizes, layer_input) in independent_layers.items():
+            self.input_mlps[input_name] = MLP(layer_sizes=input_sizes, output_size=input_size,
+                                              input_size=layer_input, non_linearity=non_linearity)
+
+        self.shared_mlp = MLP(layer_sizes=shared_layer_sizes, input_size=input_size,
+                              output_size=output_size, non_linearity=non_linearity)
+
+    def forward(self, inputs: Dict[str, torch.Tensor], validate_inputs: bool = True):
+        """
+
+        :param inputs: Dict of Inputs [batch, inputs]
+        :param validate_inputs:
+        :return:
+        """
+        if validate_inputs:
+            input_names = set(list(inputs.keys()))
+            assert input_names.intersection(self.input_names) == input_names
+
+        combined_input = 0
+        for input_name, value in inputs.items():
+            combined_input += self.input_mlps[input_name](value)
+
+        y = self.shared_mlp(combined_input)
+        return y
+
+
 if __name__ == '__main__':
-    test = RNN()
+    input_data = {
+        'input_1': torch.randn((500, 10)),
+        'input_2': torch.randn((500, 10)),
+    }
+    test = MultiHeadMLP(input_size=10, output_size=5)
+    out = test(input_data)
+    pdb.set_trace()
