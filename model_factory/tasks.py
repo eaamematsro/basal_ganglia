@@ -307,8 +307,8 @@ class GenerateSine(Task):
     def forward(self, targ_num: np.ndarray,):
         batch_size = targ_num.shape[0]
         position_store = torch.zeros(self.duration, batch_size)
-        bg_input = torch.zeros((batch_size, 1))
-        bg_inputs = {'context': bg_input}
+        context_input = torch.ones((batch_size, 1))
+        bg_inputs = {'context': context_input}
         self.network.rnn.reset_state(batch_size)
         go_cues = self.Pulses[:, targ_num]
 
