@@ -19,6 +19,8 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         """Define network forward pass"""
 
 
+
+
 class VanillaRNN(BaseArchitecture):
     """Vanilla RNN class with no other areas"""
     def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
@@ -31,8 +33,9 @@ class VanillaRNN(BaseArchitecture):
                       g0=g0, input_sources=input_sources, device=device,
                       dt=dt, tau=tau)
 
-    def forward(self, inputs: Optional[torch.device] = None):
-        r_hidden, r_act = self.rnn(inputs)
+    def forward(self, rnn_inputs: Optional[Dict[str, torch.Tensor]] = None,
+                **kwargs):
+        r_hidden, r_act = self.rnn(rnn_inputs)
         return {'r_hidden': r_hidden, 'r_act': r_act}
 
 

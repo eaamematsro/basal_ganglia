@@ -1,3 +1,4 @@
+import abc
 import pdb
 
 import torch
@@ -7,7 +8,23 @@ from factory_utils import torchify
 from typing import Callable, Optional, Dict, List, Tuple
 
 
-class RNN(nn.Module):
+class Module(nn.Module, metaclass=abc.ABCMeta):
+    def __init__(self):
+        super(Module, self).__init__()
+
+    def freeze_weights(self):
+        for param in self.parameters():
+            param.requires_grad = False
+
+    def un_freeze_weights(self):
+        for param in self.parameters():
+            param.requires_grad = True
+
+    # @abc.abstractmethod
+    # def transfer(self, target_model: nn.Module, source_model: nn.Module):
+    #     """"""
+
+class RNN(Module):
     """ Base class for recurrent neural networks"""
 
     def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
@@ -26,11 +43,11 @@ class RNN(nn.Module):
 
         self.nonlinearity = non_linearity
 
-        self.I = {}
+        self.I = nn.ParameterDict({})
 
         if input_sources is not None:
             for input_name, (input_size, learnable) in input_sources.items():
-                input_mat = np.random.randn(nneurons, ) / np.sqrt(nneurons)
+                input_mat = np.random.randn(nneurons, input_size) / np.sqrt(nneurons)
                 input_tens = torchify(input_mat, device)
                 if learnable:
                     self.I[input_name] = nn.Parameter(input_tens)
@@ -69,7 +86,7 @@ class RNN(nn.Module):
         self.r = self.nonlinearity(self.x)
 
 
-class ThalamicRNN(nn.Module):
+class ThalamicRNN(Module):
     """ Base class for recurrent neural networks"""
 
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
@@ -139,7 +156,7 @@ class ThalamicRNN(nn.Module):
         self.r = self.nonlinearity(self.x)
 
 
-class MLP(nn.Module):
+class MLP(Module):
     def __init__(self, layer_sizes: Optional[Tuple[int, ...]] = None, non_linearity: Optional[nn.Module] = None,
                  input_size: Optional[int] = 150, output_size: Optional[int] = 10):
         super(MLP, self).__init__()
@@ -171,7 +188,7 @@ class MLP(nn.Module):
         return y
 
 
-class MultiHeadMLP(nn.Module):
+class MultiHeadMLP(Module):
     def __init__(self, independent_layers: Optional[Dict[str, Tuple[Tuple[int, ...], int]]] = None,
                  shared_layer_sizes: Optional[Tuple[int, ...]] = None,
                  non_linearity: Optional[nn.Module] = None,
@@ -185,7 +202,7 @@ class MultiHeadMLP(nn.Module):
 
         assert len(independent_layers) > 1, 'There are less than one input heads. Consider using MLP instead.'
         self.input_names = set(list(independent_layers.keys()))
-        self.input_mlps = {}
+        self.input_mlps = nn.ParameterDict({})
         for input_name, (input_sizes, layer_input) in independent_layers.items():
             self.input_mlps[input_name] = MLP(layer_sizes=input_sizes, output_size=input_size,
                                               input_size=layer_input, non_linearity=non_linearity)
@@ -212,3 +229,15 @@ class MultiHeadMLP(nn.Module):
         return y
 
 
+def transfer_network_weights(target_model: Module, source: Module)\
+        -> Module:
+    source_state_dict = source.state_dict()
+    target_state_dict = target_model.state_dict()
+
+    source_keys = list(source_state_dict.keys())
+
+    [target_state_dict.update({key: source_state_dict[key]})
+     for key in target_state_dict.keys() if key in source_keys]
+
+    target_model.load_state_dict(target_state_dict)
+    return target_model

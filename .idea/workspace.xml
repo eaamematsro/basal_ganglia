@@ -7,6 +7,7 @@
     <list default="true" id="068be01d-770f-4bcd-8be5-cef8b961c4d1" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/networks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/networks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/model_factory/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/tasks.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -35,7 +36,7 @@
   "keyToString": {
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "WebServerToolWindowFactoryState": "false",
-    "git-widget-placeholder": "thalamic-rnn",
+    "git-widget-placeholder": "main",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -78,6 +79,7 @@
       <option name="presentableId" value="Default" />
       <updated>1690372511527</updated>
       <workItem from="1690372513014" duration="6994000" />
+      <workItem from="1690458757667" duration="1806000" />
     </task>
     <servers />
   </component>

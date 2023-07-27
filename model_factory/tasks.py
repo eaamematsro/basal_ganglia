@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pytorch_lightning as pl
+import matplotlib.pyplot as plt
 from architectures import BaseArchitecture, NETWORKS
 from typing import Optional, Any
 from scipy.ndimage import gaussian_filter1d
@@ -29,6 +30,7 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """"""
+
 class ConsolidationNetwork(nn.Module):
     def __init__(self, nneurons: int = 100, nganglia: int = 20, save_path: str = None, lr: float = 1e-3,
                  device: torch.device = None, ncontexts: int = 2, dt: float = 5e-2, tau: float = .15):
@@ -342,36 +344,48 @@ class GenerateSine(Task):
         return pulses
 
     def forward(self, targ_num: np.ndarray,):
-        # assert targets.shape[1] == triggers.shape[0], 'The number of targets must be equal to the number of go cues.'
         batch_size = targ_num.shape[0]
-        # go_cues = self.Pulses[:, triggers]
         position_store = torch.zeros(self.duration, batch_size)
         bg_input = torch.zeros((batch_size, 1))
         bg_inputs = {'context': bg_input}
         self.network.rnn.reset_state(batch_size)
-        triggers = np.random.randint(0, 3, batch_size)
-        go_cues = self.Pulses[:, triggers]
+        go_cues = self.Pulses[:, targ_num]
 
         for ti in range(self.duration):
             rnn_input = {'go': go_cues[ti][None, :]}
-            outputs = self.network(bg_inputs, rnn_input)
+            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
             position_store[ti] = self.Wout @ outputs['r_act']
 
+        return position_store
+
+    def eval_network(self, targ_num: np.ndarray, ax):
+        go_cues = self.Pulses[:, targ_num]
+        with torch.no_grad():
+            position_store = self.forward(targ_num)
+        ax.cla()
+        ax.plot(self.Targets[:, targ_num[0]], label='Target')
+        ax.plot(go_cues[:, 0].cpu(), label='Go Cue')
+        ax.plot(position_store[:, 0].detach().cpu(), label='Actual')
+        plt.legend()
         return position_store
 
     def compute_loss(self, targ_num: np.ndarray, position: torch.Tensor):
         """"""
         Targets = torchify(self.Targets[:, targ_num])
-        loss = ((Targets - position) ** 2).mean(axis=0).mean()
+        loss = ((Targets - position) ** 2).sum(axis=0).mean()
         return loss
 
     def configure_optimizers(self):
         """"""
+        for param in self.network.parameters():
+            print(param.shape, param.requires_grad)
         self.optimizer = torch.optim.Adam(self.network.parameters())
 
-    def training_loop(self, niterations: int = 100, batch_size: int = 10):
+    def training_loop(self, niterations: int = 500, batch_size: int = 10,
+                      plot_freq: int = 50):
+        fig_loss, ax_loss = plt.subplots()
+        fig_perf, ax_perf = plt.subplots()
         for iteration in range(niterations):
-            print(iteration)
             self.optimizer.zero_grad()
             targ_num = np.random.randint(0, self.Targets.shape[1], batch_size)
             position = self.forward(targ_num)
@@ -379,4 +393,10 @@ class GenerateSine(Task):
             loss.backward()
             self.Loss.append(loss.item())
             self.optimizer.step()
+
+            if iteration % plot_freq == 0:
+                self.eval_network(targ_num, ax=ax_perf)
+                ax_loss.cla()
+                ax_loss.plot(self.Loss)
+            plt.pause(.01)
 
