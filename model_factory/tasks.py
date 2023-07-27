@@ -276,49 +276,10 @@ class GenerateSine(Task):
         self.create_gos_and_targets(duration)
         self.configure_optimizers()
 
-    def create_gos(self, total_time: int = 500, n_unique_pulses: int = 10):
-        pulse_times = np.linspace(total_time * 1 / 10, total_time * 4 / 10, n_unique_pulses).astype(int)
-        pulses = np.zeros((total_time, n_unique_pulses))
-        fixation = np.ones((total_time, n_unique_pulses))
-
-        for idx, pulse_start in enumerate(pulse_times):
-            pulses[pulse_start: pulse_start + 10, idx] = 1
-            fixation[pulse_start:, idx] = 0
-        pulses = torchify(gaussian_filter1d(pulses, sigma=1, axis=0))
-        fixation = torchify(gaussian_filter1d(fixation, sigma=1, axis=0))
-
-        self.Pulses = pulses
-        self.fixation = fixation
-        self.pulse_times = pulse_times
-        self.total_time = total_time
-        self.Loss = []
-        return pulses
-
-    def create_targets(self, frequency: float = 1, delay: int = 0,
-                       amplitude: int = 1, amplitude_modulated: bool = False,
-                       **kwargs):
-        pulse_times = self.pulse_times
-        targets = np.zeros((self.total_time, pulse_times.shape[0]))
-        times = np.arange(self.total_time)
-        period = int(2 * np.pi / self.dt)
-
-        if amplitude_modulated:
-            for idx, pulse in enumerate(pulse_times):
-                amplitudes = amplitude * np.sin((times - pulse - delay) * (frequency / 2) * self.dt)
-                targets[:, idx] = amplitudes * np.sin((times - pulse - delay) * frequency * self.dt)
-                targets[:(pulse + delay), idx] = 0
-                targets[(pulse + delay + 3 * period):, idx] = 0
-        else:
-            for idx, pulse in enumerate(pulse_times):
-                targets[:, idx] = amplitude * np.sin((times - pulse - delay) * frequency * self.dt)
-                targets[:(pulse + delay), idx] = 0
-                targets[(pulse + delay + 3 * period):, idx] = 0
-        self.Targets = targets
-
-    def create_gos_and_targets(self, total_time: int = 500, n_unique_pulses: int = 10, pulse_width: int = 10,
+    def create_gos_and_targets(self, n_unique_pulses: int = 10, pulse_width: int = 10,
                                frequency: float = 1, delay: int = 0, amplitude: int = 1):
+        total_time = self.duration
         pulse_times = np.linspace(total_time * 1 / 10, total_time * 4 / 10, n_unique_pulses).astype(int)
-
         pulses = np.zeros((total_time, n_unique_pulses))
         fixation = np.ones((total_time, n_unique_pulses))
         targets = np.zeros((total_time, n_unique_pulses))
@@ -377,8 +338,6 @@ class GenerateSine(Task):
 
     def configure_optimizers(self):
         """"""
-        for param in self.network.parameters():
-            print(param.shape, param.requires_grad)
         self.optimizer = torch.optim.Adam(self.network.parameters())
 
     def training_loop(self, niterations: int = 500, batch_size: int = 10,

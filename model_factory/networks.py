@@ -229,7 +229,8 @@ class MultiHeadMLP(Module):
         return y
 
 
-def transfer_network_weights(target_model: Module, source: Module)\
+def transfer_network_weights(target_model: Module, source: Module,
+                             freeze: bool = False)\
         -> Module:
     source_state_dict = source.state_dict()
     target_state_dict = target_model.state_dict()
@@ -240,4 +241,11 @@ def transfer_network_weights(target_model: Module, source: Module)\
      for key in target_state_dict.keys() if key in source_keys]
 
     target_model.load_state_dict(target_state_dict)
+    source_names = [name for name, _ in source.named_parameters()]
+
+    if freeze:
+        for name, param in target_model.named_parameters():
+            if name in source_names:
+                param.requires_grad = False
+
     return target_model

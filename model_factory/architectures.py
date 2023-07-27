@@ -18,7 +18,9 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
     def forward(self, **kwargs) -> Dict[str, torch.Tensor]:
         """Define network forward pass"""
 
-
+    @abc.abstractmethod
+    def description(self,):
+        """"""
 
 
 class VanillaRNN(BaseArchitecture):
@@ -37,6 +39,12 @@ class VanillaRNN(BaseArchitecture):
                 **kwargs):
         r_hidden, r_act = self.rnn(rnn_inputs)
         return {'r_hidden': r_hidden, 'r_act': r_act}
+
+    def description(self,):
+        """"""
+        print(
+            "A basic RNN with inputs"
+        )
 
 
 class RNNStaticBG(BaseArchitecture):
@@ -59,6 +67,12 @@ class RNNStaticBG(BaseArchitecture):
         bg_act = self.bg(bg_input).T
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs)
         return {'r_hidden': r_hidden, 'r_act': r_act, 'bg_act': bg_act}
+
+    def description(self,):
+        """"""
+        print(
+            "An RNN who's weights are multiplied by a static gain from the BG"
+        )
 
 
 class RNNFeedbackBG(BaseArchitecture):
@@ -92,6 +106,13 @@ class RNNFeedbackBG(BaseArchitecture):
         bg_act = self.bg(bg_inputs).T
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs)
         return {'r_hidden': r_hidden, 'r_act': r_act, 'bg_act': bg_act}
+
+    def description(self,):
+        """"""
+        print(
+            "An RNN who's weights are dynamically multiplied by the outputs of a BG module"
+            "that receives inputs from the RNN itself."
+        )
 
 
 NETWORKS = {
