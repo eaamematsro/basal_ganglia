@@ -16,6 +16,7 @@ from scipy.stats import special_ortho_group
 from model_factory.networks import transfer_network_weights
 from model_factory.tasks import GenerateSine
 
+
 plt.style.use('ggplot')
 
 if __name__ == '__main__':
