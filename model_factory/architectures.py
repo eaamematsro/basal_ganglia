@@ -1,10 +1,14 @@
 import abc
 import pdb
-
+import os
+import re
 import torch
+import pickle
 import numpy as np
 import torch.nn as nn
 from factory_utils import torchify
+from datetime import date
+from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
 from networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
 
@@ -13,6 +17,9 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
     def __init__(self, ):
         super(BaseArchitecture, self).__init__()
         self.network = None
+        self.save_path = None
+        self.text_path = None
+        self.set_save_path()
 
     @abc.abstractmethod
     def forward(self, **kwargs) -> Dict[str, torch.Tensor]:
@@ -21,6 +28,30 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def description(self,):
         """"""
+
+    def set_save_path(self):
+        """"""
+        cwd = os.getcwd()
+        cwd_path = Path(cwd)
+        model_path = cwd_path / 'data/models'
+        model_path.mkdir(exist_ok=True)
+
+        date_str = date.today().strftime("%Y-%m-%d")
+        date_save_path = model_path / date_str
+        date_save_path.mkdir(exist_ok=True)
+        self.save_path = date_save_path
+
+        reg_exp = '_'.join(['model', '\d+'])
+        files = [x for x in date_save_path.iterdir() if x.is_dir() and re.search(reg_exp, str(x.stem))]
+        folder_path = date_save_path / f"model_{len(files)}"
+        folder_path.mkdir(exist_ok=True)
+        self.save_path = folder_path / 'model.pickle'
+        self.text_path = folder_path / 'params.json'
+
+    def save_model(self):
+        data_dict = {'network': self.network, 'full_model': self}
+        with open(self.save_path, 'wb') as handle:
+            pickle.dump(data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 class VanillaRNN(BaseArchitecture):
