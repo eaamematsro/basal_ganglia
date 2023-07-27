@@ -21,6 +21,7 @@ plt.style.use('ggplot')
 if __name__ == '__main__':
     simple_model = GenerateSine(network="VanillaRNN")
     simple_model.training_loop(niterations=1000)
+    simple_model.save_model()
 
     thalamic_model = GenerateSine(network="RNNStaticBG")
 
@@ -31,5 +32,8 @@ if __name__ == '__main__':
     # Change target parameters to learn
     thalamic_model.create_gos_and_targets(frequency=2)
     thalamic_model.training_loop(niterations=5000)
+    thalamic_model.save_model()
 
+    # Interpolate over gains
+    thalamic_model.plot_different_gains()
 

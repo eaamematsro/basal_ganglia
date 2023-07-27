@@ -1,15 +1,21 @@
 import abc
 import pdb
-
+import os
+import re
 import torch
 import torch.nn as nn
 import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 from architectures import BaseArchitecture, NETWORKS
 from typing import Optional, Any
 from scipy.ndimage import gaussian_filter1d
 from factory_utils import torchify
+from datetime import date
+from pathlib import Path
+
 
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
@@ -30,6 +36,10 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """"""
+
+    def save_model(self):
+        self.network.save_model()
+
 
 class ConsolidationNetwork(nn.Module):
     def __init__(self, nneurons: int = 100, nganglia: int = 20, save_path: str = None, lr: float = 1e-3,
@@ -249,6 +259,7 @@ class GenerateSine(Task):
                  nbg: int = 10,
 
                  **kwargs):
+
         kwargs['ncontext'] = 1
         rnn_input_source = {
             'go': (1, True)
@@ -256,8 +267,11 @@ class GenerateSine(Task):
 
         super(GenerateSine, self).__init__(network=network, nneurons=nneurons, nbg=nbg,
                                            input_sources=rnn_input_source,
-
                                            **kwargs)
+
+        self.network.params.update({'task': "SineGeneration"})
+        self.network.params.update(kwargs)
+
         self.Wout = nn.Parameter(
             torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons))
         )
@@ -275,6 +289,7 @@ class GenerateSine(Task):
         self.optimizer = None
         self.create_gos_and_targets(duration)
         self.configure_optimizers()
+        self.results_path = set_results_path(type(self).__name__)
 
     def create_gos_and_targets(self, n_unique_pulses: int = 10, pulse_width: int = 10,
                                frequency: float = 1, delay: int = 0, amplitude: int = 1):
@@ -359,3 +374,47 @@ class GenerateSine(Task):
                 ax_loss.plot(self.Loss)
             plt.pause(.01)
 
+    def plot_different_gains(self, batch_size: int = 5,
+                             cmap: mcolors.Colormap = None):
+        if cmap is None:
+            cmap = plt.cm.inferno
+        trigger = np.ones(batch_size).astype(int)
+        context_input = torch.linspace(0, 1, batch_size)[:, None]
+        position_store = torch.zeros(self.duration, batch_size)
+        bg_inputs = {'context': context_input}
+        self.network.rnn.reset_state(batch_size)
+        go_cues = self.Pulses[:, trigger]
+        normalization = mcolors.Normalize(vmin=0, vmax=batch_size-1)
+        with torch.no_grad():
+            for ti in range(self.duration):
+                rnn_input = {'go': go_cues[ti][None, :]}
+                outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
+                position_store[ti] = self.Wout @ outputs['r_act']
+        fig, ax = plt.subplots()
+        ax.plot(self.Targets[:, 0], label='Target', color='black', ls='--')
+        ax.plot(go_cues[:, 0], label='Go Cue', color='red')
+        for batch in range(batch_size):
+            ax.plot(position_store[:, batch], color=cmap(normalization(batch)))
+        ax.legend()
+        file_name = self.results_path / 'gain_interpolation'
+        fig.savefig(file_name)
+        plt.show()
+
+
+        return position_store
+
+
+def set_results_path(task_name: str):
+    cwd = os.getcwd()
+    cwd_path = Path(cwd)
+    task_path = cwd_path / f"results/{task_name}"
+    task_path.mkdir(exist_ok=True)
+
+    date_str = date.today().strftime("%Y-%m-%d")
+    date_save_path = task_path / date_str
+    date_save_path.mkdir(exist_ok=True)
+    reg_exp = '_'.join(['Trial', '\d+'])
+    files = [x for x in date_save_path.iterdir() if x.is_dir() and re.search(reg_exp, str(x.stem))]
+    folder_path = date_save_path / f"Trial_{len(files)}"
+    folder_path.mkdir(exist_ok=True)
+    return folder_path

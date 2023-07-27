@@ -4,6 +4,7 @@ import os
 import re
 import torch
 import pickle
+import json
 import numpy as np
 import torch.nn as nn
 from factory_utils import torchify
@@ -19,6 +20,7 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         self.network = None
         self.save_path = None
         self.text_path = None
+        self.params = {}
         self.set_save_path()
 
     @abc.abstractmethod
@@ -41,7 +43,7 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         date_save_path.mkdir(exist_ok=True)
         self.save_path = date_save_path
 
-        reg_exp = '_'.join(['model', '\d+'])
+        reg_exp = '_'.join(['model_', '\d+'])
         files = [x for x in date_save_path.iterdir() if x.is_dir() and re.search(reg_exp, str(x.stem))]
         folder_path = date_save_path / f"model_{len(files)}"
         folder_path.mkdir(exist_ok=True)
@@ -53,6 +55,9 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         with open(self.save_path, 'wb') as handle:
             pickle.dump(data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+        with open(self.text_path, 'w') as f:
+            json.dump(self.params, f)
+
 
 class VanillaRNN(BaseArchitecture):
     """Vanilla RNN class with no other areas"""
@@ -61,7 +66,11 @@ class VanillaRNN(BaseArchitecture):
                  device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15,
                  **kwargs):
         super(VanillaRNN, self).__init__()
-
+        self.params = {
+            'n_hidden': nneurons,
+            'inputs': input_sources,
+            'network': type(self).__name__
+        }
         self.rnn = RNN(nneurons=nneurons, non_linearity=non_linearity,
                       g0=g0, input_sources=input_sources, device=device,
                       dt=dt, tau=tau)
@@ -85,7 +94,13 @@ class RNNStaticBG(BaseArchitecture):
                  bg_layer_sizes: Optional[Tuple[int, ...]] = None, bg_nfn:  Optional[nn.Module] = None,
                  bg_input_size: Optional[int] = 1, **kwargs):
         super(RNNStaticBG, self).__init__()
-
+        self.params = {
+            'n_hidden': nneurons,
+            'nbg': nbg,
+            'inputs': input_sources,
+            'bg_layers': bg_layer_sizes,
+            'network': type(self).__name__
+        }
         self.rnn = ThalamicRNN(nneurons=nneurons, nbg=nbg, non_linearity=non_linearity, g0=g0,
                                input_sources=input_sources, dt=dt, tau=tau, device=device)
         self.bg = MLP(layer_sizes=bg_layer_sizes, non_linearity=bg_nfn, input_size=bg_input_size,
@@ -114,7 +129,14 @@ class RNNFeedbackBG(BaseArchitecture):
                  = None, bg_nfn:  Optional[nn.Module] = None, bg_input_size: Optional[int] = 10, context_rank: int = 1,
                  **kwargs):
         super(RNNFeedbackBG, self).__init__()
-
+        self.params = {
+            'n_hidden': nneurons,
+            'nbg': nbg,
+            'inputs': input_sources,
+            'bg_ind_layers': bg_ind_layer_sizes,
+            'bg_shared_layers': shared_layer_sizes,
+            'network': type(self).__name__
+        }
         self.rnn = ThalamicRNN(nneurons=nneurons, nbg=nbg, non_linearity=non_linearity, g0=g0,
                                input_sources=input_sources, dt=dt, tau=tau, device=device)
         if bg_ind_layer_sizes is None:

@@ -7,6 +7,7 @@ from tasks import GenerateSine
 
 
 vanilla_model = GenerateSine(network="VanillaRNN")
+vanilla_model.plot_different_gains()
 # vanilla_model.training_loop()
 cool_model = GenerateSine()
 transfer_network_weights(cool_model.network.rnn, vanilla_model.network.rnn,
