@@ -9,10 +9,10 @@ import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-from architectures import NETWORKS
+from .architectures import NETWORKS
 from typing import Optional, Any
 from scipy.ndimage import gaussian_filter1d
-from factory_utils import torchify
+from .factory_utils import torchify
 from datetime import date
 from pathlib import Path
 
@@ -346,8 +346,8 @@ class GenerateSine(Task):
 
     def compute_loss(self, targ_num: np.ndarray, position: torch.Tensor):
         """"""
-        Targets = torchify(self.Targets[:, targ_num]).T
-        loss = ((Targets - position) ** 2).mean()
+        targets = torchify(self.Targets[:, targ_num])
+        loss = ((targets.unsqueeze(2) - position) ** 2).sum(axis=0).mean()
         return loss
 
     def configure_optimizers(self):
@@ -355,7 +355,7 @@ class GenerateSine(Task):
         self.optimizer = torch.optim.Adam(self.network.parameters())
 
     def training_loop(self, niterations: int = 500, batch_size: int = 50,
-                      plot_freq: int = 50):
+                      plot_freq: int = 50, clip_grad: bool = True):
         fig_loss, ax_loss = plt.subplots(1, 2, figsize=(16, 8))
         # fig_perf, ax_perf = plt.subplots()
         for iteration in range(niterations):
@@ -365,8 +365,9 @@ class GenerateSine(Task):
             loss = self.compute_loss(targ_num, position)
             loss.backward()
             self.Loss.append(loss.item())
-            nn.utils.clip_grad_norm_(self.network.parameters(), 1, norm_type=2.0,
-                                     error_if_nonfinite=False, foreach=None)
+            if clip_grad:
+                nn.utils.clip_grad_norm_(self.network.parameters(), 1, norm_type=2.0,
+                                        error_if_nonfinite=False, foreach=None)
             self.optimizer.step()
 
             if iteration % plot_freq == 0:

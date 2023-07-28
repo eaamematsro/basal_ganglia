@@ -4,7 +4,7 @@ import pdb
 import torch
 import numpy as np
 import torch.nn as nn
-from factory_utils import torchify
+from .factory_utils import torchify
 from typing import Callable, Optional, Dict, List, Tuple
 
 
@@ -23,6 +23,7 @@ class Module(nn.Module, metaclass=abc.ABCMeta):
     # @abc.abstractmethod
     # def transfer(self, target_model: nn.Module, source_model: nn.Module):
     #     """"""
+
 
 class RNN(Module):
     """ Base class for recurrent neural networks"""

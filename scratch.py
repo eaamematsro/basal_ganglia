@@ -3,9 +3,9 @@ import pdb
 import numpy as np
 import torch
 
-from architectures import RNNStaticBG, RNNFeedbackBG, NETWORKS
-from networks import transfer_network_weights
-from tasks import GenerateSine
+from model_factory.architectures import RNNStaticBG, RNNFeedbackBG, NETWORKS
+from model_factory.networks import transfer_network_weights
+from model_factory.tasks import GenerateSine
 
 
 vanilla_model = GenerateSine(network="VanillaRNN")

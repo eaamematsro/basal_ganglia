@@ -9,7 +9,7 @@ import torch.nn as nn
 from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
-from networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
+from .networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
 
 
 class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):

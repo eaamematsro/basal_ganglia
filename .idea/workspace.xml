@@ -8,9 +8,8 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/architectures.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/architectures.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/networks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/networks.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/model_factory/scratch.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/scratch.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/model_factory/scratch.py" beforeDir="false" afterPath="$PROJECT_DIR$/scratch.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/tasks.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/multi_context_sine.py" beforeDir="false" afterPath="$PROJECT_DIR$/multi_context_sine.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -53,6 +52,9 @@
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/scripts" />
     </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
   </component>
   <component name="RunManager">
     <configuration name="scratch" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
@@ -65,7 +67,7 @@
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/model_factory/scratch.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/scratch.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -90,7 +92,7 @@
       <updated>1690372511527</updated>
       <workItem from="1690372513014" duration="6994000" />
       <workItem from="1690458757667" duration="7244000" />
-      <workItem from="1690541446571" duration="2084000" />
+      <workItem from="1690541446571" duration="2826000" />
     </task>
     <servers />
   </component>
