@@ -17,7 +17,6 @@ from datetime import date
 from pathlib import Path
 
 
-
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
     def __init__(self, network: str, device: Optional[torch.device] = None,
                  **kwargs):
@@ -266,7 +265,7 @@ class GenerateSine(Task):
         }
 
         super(GenerateSine, self).__init__(network=network, nneurons=nneurons, nbg=nbg,
-                                           input_sources=rnn_input_source,
+                                           input_sources=rnn_input_source, include_bias=False,
                                            **kwargs)
 
         self.network.params.update({'task': "SineGeneration"})
@@ -366,6 +365,8 @@ class GenerateSine(Task):
             loss = self.compute_loss(targ_num, position)
             loss.backward()
             self.Loss.append(loss.item())
+            nn.utils.clip_grad_norm_(self.network.parameters(), 1, norm_type=2.0,
+                                     error_if_nonfinite=False, foreach=None)
             self.optimizer.step()
 
             if iteration % plot_freq == 0:

@@ -27,7 +27,7 @@ if __name__ == '__main__':
     thalamic_model = GenerateSine(network="RNNStaticBG")
 
     # Transfer and freeze weights from trained network's rnn module
-    transfer_network_weights(thalamic_model.network.rnn, simple_model.network.rnn,
+    transfer_network_weights(thalamic_model.network, simple_model.network,
                              freeze=True)
 
     # Change target parameters to learn

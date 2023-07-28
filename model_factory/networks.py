@@ -158,7 +158,7 @@ class ThalamicRNN(Module):
 
 class MLP(Module):
     def __init__(self, layer_sizes: Optional[Tuple[int, ...]] = None, non_linearity: Optional[nn.Module] = None,
-                 input_size: Optional[int] = 150, output_size: Optional[int] = 10):
+                 input_size: Optional[int] = 150, output_size: Optional[int] = 10, include_bias: bool = True):
         super(MLP, self).__init__()
         if layer_sizes is None or not (type(layer_sizes) == tuple):
             layer_sizes = (100, 50,)
@@ -171,7 +171,7 @@ class MLP(Module):
         previous_size = input_size
         for size in layer_sizes:
             modules.append(
-                nn.Linear(previous_size, size)
+                nn.Linear(previous_size, size, bias=include_bias)
             )
             modules.append(non_linearity)
             previous_size = size
@@ -192,7 +192,8 @@ class MultiHeadMLP(Module):
     def __init__(self, independent_layers: Optional[Dict[str, Tuple[Tuple[int, ...], int]]] = None,
                  shared_layer_sizes: Optional[Tuple[int, ...]] = None,
                  non_linearity: Optional[nn.Module] = None,
-                 input_size: Optional[int] = 150, output_size: Optional[int] = 10):
+                 input_size: Optional[int] = 150, output_size: Optional[int] = 10,
+                 include_bias: bool = True):
         super(MultiHeadMLP, self).__init__()
         if independent_layers is None:
             independent_layers = {
@@ -205,10 +206,12 @@ class MultiHeadMLP(Module):
         self.input_mlps = nn.ParameterDict({})
         for input_name, (input_sizes, layer_input) in independent_layers.items():
             self.input_mlps[input_name] = MLP(layer_sizes=input_sizes, output_size=input_size,
-                                              input_size=layer_input, non_linearity=non_linearity)
+                                              input_size=layer_input, non_linearity=non_linearity,
+                                              include_bias=include_bias)
 
         self.shared_mlp = MLP(layer_sizes=shared_layer_sizes, input_size=input_size,
-                              output_size=output_size, non_linearity=non_linearity)
+                              output_size=output_size, non_linearity=non_linearity,
+                              include_bias=include_bias)
 
     def forward(self, inputs: Dict[str, torch.Tensor], validate_inputs: bool = True):
         """

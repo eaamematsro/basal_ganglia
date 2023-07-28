@@ -90,7 +90,7 @@ class RNNStaticBG(BaseArchitecture):
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
                  dt: float = .05, tau: float = .15, device: Optional[torch.device] = None,
                  bg_layer_sizes: Optional[Tuple[int, ...]] = None, bg_nfn:  Optional[nn.Module] = None,
-                 bg_input_size: Optional[int] = 1, **kwargs):
+                 bg_input_size: Optional[int] = 1, include_bias: bool = True, **kwargs):
         super(RNNStaticBG, self).__init__()
         self.params = {
             'n_hidden': nneurons,
@@ -100,9 +100,10 @@ class RNNStaticBG(BaseArchitecture):
             'network': type(self).__name__
         }
         self.rnn = ThalamicRNN(nneurons=nneurons, nbg=nbg, non_linearity=non_linearity, g0=g0,
-                               input_sources=input_sources, dt=dt, tau=tau, device=device)
+                               input_sources=input_sources, dt=dt, tau=tau, device=device,
+                               )
         self.bg = MLP(layer_sizes=bg_layer_sizes, non_linearity=bg_nfn, input_size=bg_input_size,
-                      output_size=nbg)
+                      output_size=nbg, include_bias=include_bias)
 
     def forward(self, bg_inputs: Dict[str, torch.Tensor],
                 rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):
@@ -125,7 +126,7 @@ class RNNFeedbackBG(BaseArchitecture):
                  dt: float = .05, tau: float = .15, device: Optional[torch.device] = None,
                  bg_ind_layer_sizes: Optional[Tuple[int, ...]] = None, shared_layer_sizes: Optional[Tuple[int, ...]]
                  = None, bg_nfn:  Optional[nn.Module] = None, bg_input_size: Optional[int] = 10, context_rank: int = 1,
-                 **kwargs):
+                 include_bias: bool = True, **kwargs):
         super(RNNFeedbackBG, self).__init__()
         self.params = {
             'n_hidden': nneurons,
@@ -147,8 +148,8 @@ class RNNFeedbackBG(BaseArchitecture):
             'recurrent': ((50, 25), nneurons)
         }
         self.bg = MultiHeadMLP(independent_layers=bg_inputs, shared_layer_sizes=shared_layer_sizes,
-                               non_linearity=bg_nfn, input_size=bg_input_size, output_size=nbg
-        )
+                               non_linearity=bg_nfn, input_size=bg_input_size, output_size=nbg,
+                               include_bias=include_bias)
 
     def forward(self, bg_inputs: Dict[str, torch.Tensor],
                 rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):

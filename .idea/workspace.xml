@@ -10,6 +10,7 @@
       <change beforePath="$PROJECT_DIR$/model_factory/networks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/networks.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/scratch.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/scratch.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/tasks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/multi_context_sine.py" beforeDir="false" afterPath="$PROJECT_DIR$/multi_context_sine.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -89,7 +90,7 @@
       <updated>1690372511527</updated>
       <workItem from="1690372513014" duration="6994000" />
       <workItem from="1690458757667" duration="7244000" />
-      <workItem from="1690541446571" duration="1193000" />
+      <workItem from="1690541446571" duration="2084000" />
     </task>
     <servers />
   </component>
