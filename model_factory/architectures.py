@@ -7,11 +7,11 @@ import pickle
 import json
 import numpy as np
 import torch.nn as nn
-from factory_utils import torchify
+from .factory_utils import torchify
 from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
-from networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
+from .networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
 
 
 class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
@@ -63,7 +63,7 @@ class VanillaRNN(BaseArchitecture):
     """Vanilla RNN class with no other areas"""
     def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15,
+                 device: Optional[torch.device] = None, dt: float = .05, tau: float = .15,
                  **kwargs):
         super(VanillaRNN, self).__init__()
         self.params = {
@@ -90,7 +90,7 @@ class VanillaRNN(BaseArchitecture):
 class RNNStaticBG(BaseArchitecture):
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 dt: float = .01, tau: float = .15, device: Optional[torch.device] = None,
+                 dt: float = .05, tau: float = .15, device: Optional[torch.device] = None,
                  bg_layer_sizes: Optional[Tuple[int, ...]] = None, bg_nfn:  Optional[nn.Module] = None,
                  bg_input_size: Optional[int] = 1, **kwargs):
         super(RNNStaticBG, self).__init__()
@@ -124,7 +124,7 @@ class RNNStaticBG(BaseArchitecture):
 class RNNFeedbackBG(BaseArchitecture):
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 dt: float = .01, tau: float = .15, device: Optional[torch.device] = None,
+                 dt: float = .05, tau: float = .15, device: Optional[torch.device] = None,
                  bg_ind_layer_sizes: Optional[Tuple[int, ...]] = None, shared_layer_sizes: Optional[Tuple[int, ...]]
                  = None, bg_nfn:  Optional[nn.Module] = None, bg_input_size: Optional[int] = 10, context_rank: int = 1,
                  **kwargs):

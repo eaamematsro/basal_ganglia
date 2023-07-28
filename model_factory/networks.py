@@ -4,7 +4,7 @@ import pdb
 import torch
 import numpy as np
 import torch.nn as nn
-from factory_utils import torchify
+from .factory_utils import torchify
 from typing import Callable, Optional, Dict, List, Tuple
 
 
@@ -58,12 +58,12 @@ class RNN(Module):
         J_mat = torchify(J_mat, device=device)
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
-        self.B = nn.Parameter(torchify(np.random.randn(nneurons, 1), device))
+        self.B = nn.Parameter(torchify(np.random.randn(nneurons, 1) / np.sqrt(nneurons), device))
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
 
-    def forward(self, inputs: Dict[str, torch.Tensor], noise_scale: float = 0,
+    def forward(self, inputs: Dict[str, torch.Tensor], noise_scale: float = .1,
                 validate_inputs: bool = False):
         if validate_inputs:
             input_names = set(list(inputs.keys()))
@@ -127,7 +127,7 @@ class ThalamicRNN(Module):
         self.dt = dt
         self.tau = tau
 
-    def forward(self, r_thalamic, inputs: Optional[Dict[str, torch.Tensor]] = None, noise_scale: float = 0,
+    def forward(self, r_thalamic, inputs: Optional[Dict[str, torch.Tensor]] = None, noise_scale: float = 0.1,
                 validate_inputs: bool = False):
         if inputs is None:
             inputs = {}

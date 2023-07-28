@@ -9,10 +9,10 @@ import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-from architectures import BaseArchitecture, NETWORKS
+from .architectures import NETWORKS
 from typing import Optional, Any
 from scipy.ndimage import gaussian_filter1d
-from factory_utils import torchify
+from .factory_utils import torchify
 from datetime import date
 from pathlib import Path
 
@@ -255,7 +255,7 @@ class ConsolidationNetwork(nn.Module):
 
 class GenerateSine(Task):
     def __init__(self, network: Optional[str] = "RNNFeedbackBG",
-                 nneurons: int = 150, duration: int = 300,
+                 nneurons: int = 150, duration: int = 500,
                  nbg: int = 10,
 
                  **kwargs):
@@ -287,7 +287,7 @@ class GenerateSine(Task):
         self.kappaog = None
         self.new_targ_params = None
         self.optimizer = None
-        self.create_gos_and_targets(duration)
+        self.create_gos_and_targets()
         self.configure_optimizers()
         self.results_path = set_results_path(type(self).__name__)
 
@@ -348,17 +348,17 @@ class GenerateSine(Task):
     def compute_loss(self, targ_num: np.ndarray, position: torch.Tensor):
         """"""
         Targets = torchify(self.Targets[:, targ_num])
-        loss = ((Targets - position) ** 2).sum(axis=0).mean()
+        loss = ((Targets - position) ** 2).mean()
         return loss
 
     def configure_optimizers(self):
         """"""
         self.optimizer = torch.optim.Adam(self.network.parameters())
 
-    def training_loop(self, niterations: int = 500, batch_size: int = 10,
+    def training_loop(self, niterations: int = 500, batch_size: int = 50,
                       plot_freq: int = 50):
-        fig_loss, ax_loss = plt.subplots()
-        fig_perf, ax_perf = plt.subplots()
+        fig_loss, ax_loss = plt.subplots(1, 2, figsize=(16, 8))
+        # fig_perf, ax_perf = plt.subplots()
         for iteration in range(niterations):
             self.optimizer.zero_grad()
             targ_num = np.random.randint(0, self.Targets.shape[1], batch_size)
@@ -369,9 +369,9 @@ class GenerateSine(Task):
             self.optimizer.step()
 
             if iteration % plot_freq == 0:
-                self.eval_network(targ_num, ax=ax_perf)
-                ax_loss.cla()
-                ax_loss.plot(self.Loss)
+                self.eval_network(targ_num, ax=ax_loss[1])
+                ax_loss[0].cla()
+                ax_loss[0].plot(self.Loss)
             plt.pause(.01)
 
     def plot_different_gains(self, batch_size: int = 5,
