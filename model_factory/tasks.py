@@ -9,10 +9,10 @@ import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-from .architectures import NETWORKS
+from architectures import NETWORKS
 from typing import Optional, Any
 from scipy.ndimage import gaussian_filter1d
-from .factory_utils import torchify
+from factory_utils import torchify
 from datetime import date
 from pathlib import Path
 
@@ -272,8 +272,8 @@ class GenerateSine(Task):
         self.network.params.update({'task': "SineGeneration"})
         self.network.params.update(kwargs)
 
-        self.Wout = nn.Parameter(
-            torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons))
+        self.network.Wout = nn.Parameter(
+            torchify(np.random.randn(nneurons, 1) / np.sqrt(nneurons))
         )
         self.duration = duration
         self.dt = self.network.rnn.dt
@@ -321,16 +321,16 @@ class GenerateSine(Task):
 
     def forward(self, targ_num: np.ndarray,):
         batch_size = targ_num.shape[0]
-        position_store = torch.zeros(self.duration, batch_size)
+        position_store = torch.zeros(self.duration, batch_size, 1)
         context_input = torch.ones((batch_size, 1))
         bg_inputs = {'context': context_input}
         self.network.rnn.reset_state(batch_size)
         go_cues = self.Pulses[:, targ_num]
 
         for ti in range(self.duration):
-            rnn_input = {'go': go_cues[ti][None, :]}
+            rnn_input = {'go': go_cues[ti][:, None]}
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
-            position_store[ti] = self.Wout @ outputs['r_act']
+            position_store[ti] = outputs['r_act'] @ self.network.Wout
 
         return position_store
 
@@ -347,7 +347,7 @@ class GenerateSine(Task):
 
     def compute_loss(self, targ_num: np.ndarray, position: torch.Tensor):
         """"""
-        Targets = torchify(self.Targets[:, targ_num])
+        Targets = torchify(self.Targets[:, targ_num]).T
         loss = ((Targets - position) ** 2).mean()
         return loss
 

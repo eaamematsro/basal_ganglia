@@ -5,13 +5,11 @@ import re
 import torch
 import pickle
 import json
-import numpy as np
 import torch.nn as nn
-from .factory_utils import torchify
 from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
-from .networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
+from networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
 
 
 class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
@@ -110,7 +108,7 @@ class RNNStaticBG(BaseArchitecture):
                 rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):
 
         bg_input = next(iter(bg_inputs.values()))
-        bg_act = self.bg(bg_input).T
+        bg_act = self.bg(bg_input)
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs)
         return {'r_hidden': r_hidden, 'r_act': r_act, 'bg_act': bg_act}
 
@@ -155,8 +153,8 @@ class RNNFeedbackBG(BaseArchitecture):
     def forward(self, bg_inputs: Dict[str, torch.Tensor],
                 rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):
 
-        bg_inputs['recurrent'] = self.rnn.r.T
-        bg_act = self.bg(bg_inputs).T
+        bg_inputs['recurrent'] = self.rnn.r
+        bg_act = self.bg(bg_inputs)
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs)
         return {'r_hidden': r_hidden, 'r_act': r_act, 'bg_act': bg_act}
 

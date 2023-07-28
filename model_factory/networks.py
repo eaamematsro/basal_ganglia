@@ -4,7 +4,7 @@ import pdb
 import torch
 import numpy as np
 import torch.nn as nn
-from .factory_utils import torchify
+from factory_utils import torchify
 from typing import Callable, Optional, Dict, List, Tuple
 
 
@@ -47,7 +47,7 @@ class RNN(Module):
 
         if input_sources is not None:
             for input_name, (input_size, learnable) in input_sources.items():
-                input_mat = np.random.randn(nneurons, input_size) / np.sqrt(nneurons)
+                input_mat = np.random.randn(input_size, nneurons) / np.sqrt(nneurons)
                 input_tens = torchify(input_mat, device)
                 if learnable:
                     self.I[input_name] = nn.Parameter(input_tens)
@@ -58,7 +58,7 @@ class RNN(Module):
         J_mat = torchify(J_mat, device=device)
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
-        self.B = nn.Parameter(torchify(np.random.randn(nneurons, 1) / np.sqrt(nneurons), device))
+        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons), device))
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
@@ -70,10 +70,10 @@ class RNN(Module):
             assert input_names.intersection(self.input_names) == input_names
         out = 0
         for input_name, input_value in inputs.items():
-            out += self.I[input_name] @ input_value
+            out += input_value @ self.I[input_name]
 
         x = self.x + self.dt / self.tau * (
-                -self.x + self.J @ self.r + self.B + out
+                -self.x + self.r @ self.J + self.B + out
                 + noise_scale * torch.randn(self.x.shape)
         )
         r = self.nonlinearity(x)
@@ -82,7 +82,7 @@ class RNN(Module):
         return self.x, self.r
 
     def reset_state(self, batch_size: int = 10):
-        self.x = torch.randn((self.J.shape[0], batch_size)) / np.sqrt(self.J.shape[0])
+        self.x = torch.randn((batch_size, self.J.shape[0])) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
 
@@ -109,7 +109,7 @@ class ThalamicRNN(Module):
 
         if input_sources is not None:
             for input_name, (input_size, learnable) in input_sources.items():
-                input_mat = np.random.randn(nneurons, input_size) / np.sqrt(nneurons)
+                input_mat = np.random.randn(input_size, nneurons) / np.sqrt(nneurons)
                 input_tens = torchify(input_mat, device)
                 if learnable:
                     self.I[input_name] = nn.Parameter(input_tens)
@@ -120,7 +120,7 @@ class ThalamicRNN(Module):
         J_mat = torchify(J_mat, device=device)
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
-        self.B = nn.Parameter(torchify(np.random.randn(nneurons, 1), device))
+        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons), device))
         self.U = torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons), device)
         self.V = torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons), device)
         self.x, self.r = None, None
@@ -136,12 +136,12 @@ class ThalamicRNN(Module):
             assert input_names.intersection(self.input_names) == input_names
         out = 0
         for input_name, input_value in inputs.items():
-            out += self.I[input_name] @ input_value
+            out += input_value @ self.I[input_name]
 
-        v_batch = torch.einsum('jk, ji -> jik', r_thalamic, self.V)
-        J = torch.einsum('ij, jlk -> ilk', self.U, v_batch)
-        J_rec = J + self.J[:, :, None]
-        rec_input = torch.einsum('ijk, jk -> ik', J_rec, self.r)
+        v_batch = torch.einsum('kj, ji -> kji', r_thalamic, self.V)
+        J = torch.einsum('ij, kjl -> kil', self.U, v_batch)
+        J_rec = J + self.J[None, :]
+        rec_input = torch.einsum('kij, kj -> ki', J_rec, self.r)
         x = self.x + self.dt / self.tau * (
                 -self.x + rec_input + self.B + out
                 + noise_scale * torch.randn(self.x.shape)
@@ -152,7 +152,7 @@ class ThalamicRNN(Module):
         return self.x, self.r
 
     def reset_state(self, batch_size: int = 10):
-        self.x = torch.randn((self.J.shape[0], batch_size)) / np.sqrt(self.J.shape[0])
+        self.x = torch.randn((batch_size, self.J.shape[0])) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
 

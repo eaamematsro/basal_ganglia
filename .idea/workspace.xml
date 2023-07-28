@@ -6,7 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="068be01d-770f-4bcd-8be5-cef8b961c4d1" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/model_factory/architectures.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/architectures.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/networks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/networks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/model_factory/scratch.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/scratch.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model_factory/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/model_factory/tasks.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -32,18 +34,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "WebServerToolWindowFactoryState": "false",
-    "git-widget-placeholder": "main",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/eamematsro/Documents/basal_ganglia/scripts&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/scripts" />
+    </key>
+  </component>
   <component name="RunManager">
     <configuration name="scratch" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="basal_ganglia" />
@@ -79,7 +88,8 @@
       <option name="presentableId" value="Default" />
       <updated>1690372511527</updated>
       <workItem from="1690372513014" duration="6994000" />
-      <workItem from="1690458757667" duration="1806000" />
+      <workItem from="1690458757667" duration="7244000" />
+      <workItem from="1690541446571" duration="1193000" />
     </task>
     <servers />
   </component>
