@@ -9,10 +9,10 @@ import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-from architectures import NETWORKS
+from .architectures import NETWORKS
 from typing import Optional, Any
 from scipy.ndimage import gaussian_filter1d
-from factory_utils import torchify
+from .factory_utils import torchify
 from datetime import date
 from pathlib import Path
 
@@ -346,13 +346,13 @@ class GenerateSine(Task):
 
     def compute_loss(self, targ_num: np.ndarray, position: torch.Tensor):
         """"""
-        Targets = torchify(self.Targets[:, targ_num]).T
+        Targets = torchify(self.Targets[:, targ_num])[:, :, None]
         loss = ((Targets - position) ** 2).mean()
         return loss
 
     def configure_optimizers(self):
         """"""
-        self.optimizer = torch.optim.Adam(self.network.parameters())
+        self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
 
     def training_loop(self, niterations: int = 500, batch_size: int = 50,
                       plot_freq: int = 50):
@@ -366,7 +366,7 @@ class GenerateSine(Task):
             loss.backward()
             self.Loss.append(loss.item())
             nn.utils.clip_grad_norm_(self.network.parameters(), 1, norm_type=2.0,
-                                     error_if_nonfinite=False, foreach=None)
+                                     error_if_nonfinite=False,)
             self.optimizer.step()
 
             if iteration % plot_freq == 0:
@@ -375,22 +375,22 @@ class GenerateSine(Task):
                 ax_loss[0].plot(self.Loss)
             plt.pause(.01)
 
-    def plot_different_gains(self, batch_size: int = 5,
+    def plot_different_gains(self, batch_size: int = 50,
                              cmap: mcolors.Colormap = None):
         if cmap is None:
             cmap = plt.cm.inferno
         trigger = np.ones(batch_size).astype(int)
         context_input = torch.linspace(0, 1, batch_size)[:, None]
-        position_store = torch.zeros(self.duration, batch_size)
+        position_store = torch.zeros(self.duration, batch_size, 1)
         bg_inputs = {'context': context_input}
         self.network.rnn.reset_state(batch_size)
         go_cues = self.Pulses[:, trigger]
         normalization = mcolors.Normalize(vmin=0, vmax=batch_size-1)
         with torch.no_grad():
             for ti in range(self.duration):
-                rnn_input = {'go': go_cues[ti][None, :]}
-                outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
-                position_store[ti] = self.Wout @ outputs['r_act']
+                rnn_input = {'go': go_cues[ti][:, None]}
+                outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, noise_scale=0)
+                position_store[ti] = outputs['r_act'] @ self.network.Wout
         fig, ax = plt.subplots()
         ax.plot(self.Targets[:, 0], label='Target', color='black', ls='--')
         ax.plot(go_cues[:, 0], label='Go Cue', color='red')

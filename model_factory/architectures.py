@@ -9,7 +9,7 @@ import torch.nn as nn
 from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
-from networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
+from .networks import (MLP, MultiHeadMLP, RNN, ThalamicRNN)
 
 
 class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
@@ -110,7 +110,7 @@ class RNNStaticBG(BaseArchitecture):
 
         bg_input = next(iter(bg_inputs.values()))
         bg_act = self.bg(bg_input)
-        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs)
+        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
         return {'r_hidden': r_hidden, 'r_act': r_act, 'bg_act': bg_act}
 
     def description(self,):
@@ -156,7 +156,7 @@ class RNNFeedbackBG(BaseArchitecture):
 
         bg_inputs['recurrent'] = self.rnn.r
         bg_act = self.bg(bg_inputs)
-        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs)
+        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
         return {'r_hidden': r_hidden, 'r_act': r_act, 'bg_act': bg_act}
 
     def description(self,):

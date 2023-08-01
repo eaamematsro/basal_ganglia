@@ -4,7 +4,8 @@ import pdb
 import torch
 import numpy as np
 import torch.nn as nn
-from factory_utils import torchify
+from .noise_models import GaussainNoise, GaussianSignalDependentNoise
+from .factory_utils import torchify
 from typing import Callable, Optional, Dict, List, Tuple
 
 
@@ -20,16 +21,14 @@ class Module(nn.Module, metaclass=abc.ABCMeta):
         for param in self.parameters():
             param.requires_grad = True
 
-    # @abc.abstractmethod
-    # def transfer(self, target_model: nn.Module, source_model: nn.Module):
-    #     """"""
 
 class RNN(Module):
     """ Base class for recurrent neural networks"""
 
     def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15):
+                 device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15,
+                 noise_model: Optional[nn.Module] = None):
         super(RNN, self).__init__()
 
         if device is None:
@@ -37,6 +36,9 @@ class RNN(Module):
             device = self.device
         else:
             self.device = device
+
+        if noise_model is None:
+            noise_model = GaussainNoise(sigma=np.sqrt(2 * dt/tau))
 
         if non_linearity is None:
             non_linearity = nn.Softplus()
@@ -59,6 +61,7 @@ class RNN(Module):
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons), device))
+        self.noise_model = noise_model
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
@@ -73,9 +76,9 @@ class RNN(Module):
             out += input_value @ self.I[input_name]
 
         x = self.x + self.dt / self.tau * (
-                -self.x + self.r @ self.J + self.B + out
-                + noise_scale * torch.randn(self.x.shape)
+            self.noise_model(-self.x + self.r @ self.J + self.B + out, noise_scale)
         )
+
         r = self.nonlinearity(x)
         self.x = x
         self.r = r
@@ -91,7 +94,8 @@ class ThalamicRNN(Module):
 
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15):
+                 device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15,
+                 noise_model: Optional[nn.Module] = None):
         super(ThalamicRNN, self).__init__()
 
         if device is None:
@@ -103,9 +107,12 @@ class ThalamicRNN(Module):
         if non_linearity is None:
             non_linearity = nn.Softplus()
 
+        if noise_model is None:
+            noise_model = GaussainNoise(sigma=np.sqrt(2 * dt/tau))
+
         self.nonlinearity = non_linearity
 
-        self.I = {}
+        self.I = nn.ParameterDict({})
 
         if input_sources is not None:
             for input_name, (input_size, learnable) in input_sources.items():
@@ -126,6 +133,18 @@ class ThalamicRNN(Module):
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
+        self.noise_model = noise_model
+
+    def reconfigure_u_v(self, g1: float = 0, g2: float = 0):
+        J = self.J.detach().cpu().numpy()
+        U, S, Vh = np.linalg.svd(J)
+        bg_rank = self.U.shape[1]
+
+        self.U = torchify((np.sqrt(1 - g1 ** 2)) * U[:, :bg_rank] + g1 ** 2 *
+                          np.random.randn(J.shape[0], bg_rank) / np.sqrt(J.shape[0]))
+
+        self.V = torchify((np.sqrt(1 - g2 ** 2)) * Vh[:bg_rank] + g2 ** 2 *
+                          np.random.randn(bg_rank, J.shape[0]) / np.sqrt(J.shape[0]))
 
     def forward(self, r_thalamic, inputs: Optional[Dict[str, torch.Tensor]] = None, noise_scale: float = 0.1,
                 validate_inputs: bool = False):
@@ -143,9 +162,9 @@ class ThalamicRNN(Module):
         J_rec = J + self.J[None, :]
         rec_input = torch.einsum('kij, kj -> ki', J_rec, self.r)
         x = self.x + self.dt / self.tau * (
-                -self.x + rec_input + self.B + out
-                + noise_scale * torch.randn(self.x.shape)
+               self.noise_model(-self.x + rec_input + self.B + out, noise_scale)
         )
+
         r = self.nonlinearity(x)
         self.x = x
         self.r = r
@@ -158,13 +177,17 @@ class ThalamicRNN(Module):
 
 class MLP(Module):
     def __init__(self, layer_sizes: Optional[Tuple[int, ...]] = None, non_linearity: Optional[nn.Module] = None,
-                 input_size: Optional[int] = 150, output_size: Optional[int] = 10, include_bias: bool = True):
+                 input_size: Optional[int] = 150, output_size: Optional[int] = 10, include_bias: bool = True,
+                 noise_model: Optional[nn.Module] = None):
         super(MLP, self).__init__()
         if layer_sizes is None or not (type(layer_sizes) == tuple):
             layer_sizes = (100, 50,)
 
         if non_linearity is None:
             non_linearity = nn.Softplus()
+
+        if noise_model is None:
+            noise_model = GaussainNoise(sigma=.1)
 
         modules = []
         layer_sizes = layer_sizes + (output_size,)
@@ -176,16 +199,27 @@ class MLP(Module):
             modules.append(non_linearity)
             previous_size = size
 
-        self.mlp = nn.Sequential(*modules)
+        self.weights_init(modules)
 
-    def forward(self, inputs: torch.Tensor):
+        self.mlp = nn.Sequential(*modules)
+        self.noise_model = noise_model
+
+    def forward(self, inputs: torch.Tensor, noise_scale: float = .05):
         """
 
         :param inputs: [batch, inputs]
         :return:
         """
-        y = self.mlp(inputs)
+        y = self.noise_model(self.mlp(inputs), noise_scale)
         return y
+
+    def weights_init(self, modules):
+        for m in modules:
+            if isinstance(m, nn.Linear):
+                # nn.init.xavier_normal_(m.weight, gain=nn.init.calculate_gain('sigmoid'))
+                nn.init.normal_(m.weight, std=1/m.weight.shape[0])
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
 
 class MultiHeadMLP(Module):
@@ -193,8 +227,9 @@ class MultiHeadMLP(Module):
                  shared_layer_sizes: Optional[Tuple[int, ...]] = None,
                  non_linearity: Optional[nn.Module] = None,
                  input_size: Optional[int] = 150, output_size: Optional[int] = 10,
-                 include_bias: bool = True):
+                 include_bias: bool = True, noise_model: Optional[nn.Module] = None):
         super(MultiHeadMLP, self).__init__()
+
         if independent_layers is None:
             independent_layers = {
                 'input_1': ((100, 50), 10),
@@ -207,13 +242,13 @@ class MultiHeadMLP(Module):
         for input_name, (input_sizes, layer_input) in independent_layers.items():
             self.input_mlps[input_name] = MLP(layer_sizes=input_sizes, output_size=input_size,
                                               input_size=layer_input, non_linearity=non_linearity,
-                                              include_bias=include_bias)
+                                              include_bias=include_bias, noise_model=noise_model)
 
         self.shared_mlp = MLP(layer_sizes=shared_layer_sizes, input_size=input_size,
                               output_size=output_size, non_linearity=non_linearity,
-                              include_bias=include_bias)
+                              include_bias=include_bias, noise_model=noise_model)
 
-    def forward(self, inputs: Dict[str, torch.Tensor], validate_inputs: bool = True):
+    def forward(self, inputs: Dict[str, torch.Tensor], validate_inputs: bool = True, noise_scale: float = .05):
         """
 
         :param inputs: Dict of Inputs [batch, inputs]
@@ -226,9 +261,9 @@ class MultiHeadMLP(Module):
 
         combined_input = 0
         for input_name, value in inputs.items():
-            combined_input += self.input_mlps[input_name](value)
+            combined_input += self.input_mlps[input_name](value, noise_scale)
 
-        y = self.shared_mlp(combined_input)
+        y = self.shared_mlp(combined_input, noise_scale)
         return y
 
 
