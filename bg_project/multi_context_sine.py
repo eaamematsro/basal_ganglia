@@ -1,19 +1,7 @@
-import os
-import torch
-import re
-import glob
 import pdb
-import pickle
-import itertools
-import torch.nn as nn
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
-from copy import deepcopy
-from datetime import date
 from model_factory.networks import transfer_network_weights
-from model_factory.tasks import GenerateSine
+from bg_project.datasets.tasks import GenerateSine
 
 
 plt.style.use('ggplot')

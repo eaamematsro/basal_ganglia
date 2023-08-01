@@ -1,0 +1,16 @@
+README.md
+setup.py
+bg_project.egg-info/PKG-INFO
+bg_project.egg-info/SOURCES.txt
+bg_project.egg-info/dependency_links.txt
+bg_project.egg-info/top_level.txt
+datasets/__init__.py
+datasets/loaders.py
+datasets/tasks.py
+model_factory/__init__.py
+model_factory/architectures.py
+model_factory/base.py
+model_factory/factory_utils.py
+model_factory/losses.py
+model_factory/networks.py
+model_factory/noise_models.py

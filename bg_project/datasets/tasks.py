@@ -7,12 +7,11 @@ import torch.nn as nn
 import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-from .architectures import NETWORKS
+from model_factory.architectures import NETWORKS
 from typing import Optional, Any
 from scipy.ndimage import gaussian_filter1d
-from .factory_utils import torchify
+from model_factory.factory_utils import torchify
 from datetime import date
 from pathlib import Path
 
@@ -318,13 +317,12 @@ class GenerateSine(Task):
         self.Targets = targets
         return pulses
 
-    def forward(self, targ_num: np.ndarray,):
-        batch_size = targ_num.shape[0]
+    def forward(self, go_cues: torch.Tensor,):
+        batch_size = go_cues.shape[1]
         position_store = torch.zeros(self.duration, batch_size, 1)
-        context_input = torch.ones((batch_size, 1))
+        context_input = torch.zeros((batch_size, 1))
         bg_inputs = {'context': context_input}
         self.network.rnn.reset_state(batch_size)
-        go_cues = self.Pulses[:, targ_num]
 
         for ti in range(self.duration):
             rnn_input = {'go': go_cues[ti][:, None]}
@@ -344,15 +342,37 @@ class GenerateSine(Task):
         plt.legend()
         return position_store
 
-    def compute_loss(self, targ_num: np.ndarray, position: torch.Tensor):
+    def compute_loss2(self, targ_num: np.ndarray, position: torch.Tensor):
         """"""
         Targets = torchify(self.Targets[:, targ_num])[:, :, None]
         loss = ((Targets - position) ** 2).mean()
         return loss
 
+    def compute_loss(
+            self, batch
+    ):
+
+        if isinstance(batch, dict):
+            batch = batch["X"]
+        position = self.forward(batch[0])
+        loss = ((batch[1][:, :, None] - position) ** 2).mean()
+        return loss
+
     def configure_optimizers(self):
         """"""
         self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
+
+    def training_step(
+        self, batch: torch.Tensor, batch_idx: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Update and log beta, compute losses, and log them
+        """
+
+        # Evaluate loss
+        result = self.compute_loss(batch)
+
+        return result
 
     def training_loop(self, niterations: int = 500, batch_size: int = 50,
                       plot_freq: int = 50, clip_grad: bool = True):
@@ -374,18 +394,18 @@ class GenerateSine(Task):
                 self.eval_network(targ_num, ax=ax_loss[1])
                 ax_loss[0].cla()
                 ax_loss[0].plot(self.Loss)
+                ax_loss[0].set_yscale('log')
             plt.pause(.01)
 
     def plot_different_gains(self, batch_size: int = 50,
                              cmap: mcolors.Colormap = None):
         if cmap is None:
             cmap = plt.cm.inferno
-        trigger = np.ones(batch_size).astype(int)
-        context_input = torch.linspace(0, 1, batch_size)[:, None]
+        context_input = torch.linspace(-1, 1, batch_size)[:, None]
         position_store = torch.zeros(self.duration, batch_size, 1)
         bg_inputs = {'context': context_input}
         self.network.rnn.reset_state(batch_size)
-        go_cues = self.Pulses[:, trigger]
+        go_cues = self.Pulses[:, np.zeros(batch_size).astype(int)]
         normalization = mcolors.Normalize(vmin=0, vmax=batch_size-1)
         with torch.no_grad():
             for ti in range(self.duration):

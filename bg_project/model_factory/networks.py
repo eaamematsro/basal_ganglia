@@ -158,12 +158,11 @@ class ThalamicRNN(Module):
         for input_name, input_value in inputs.items():
             out += input_value @ self.I[input_name]
 
-        v_batch = torch.einsum('kj, ji -> kji', r_thalamic, self.V)
-        J = torch.einsum('ij, kjl -> kil', self.U, v_batch)
-        J_rec = J + self.J[None, :]
-        rec_input = torch.einsum('kij, kj -> ki', J_rec, self.r)
+        rec_input = torch.einsum('ij, kj, jl, ki -> kl',
+                                 self.U, r_thalamic, self.V, self.r)
         x = self.x + self.dt / self.tau * (
-               self.noise_model(-self.x + rec_input + self.B + out, noise_scale)
+               self.noise_model(-self.x + self.r @ self.J +
+                                rec_input + self.B + out, noise_scale)
         )
 
         r = self.nonlinearity(x)
@@ -188,7 +187,7 @@ class MLP(Module):
             non_linearity = nn.Softplus()
 
         if noise_model is None:
-            noise_model = GaussainNoise(sigma=.1)
+            noise_model = GaussainNoise(sigma=.25)
 
         modules = []
         layer_sizes = layer_sizes + (output_size,)
