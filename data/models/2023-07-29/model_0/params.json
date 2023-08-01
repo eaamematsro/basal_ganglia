@@ -1,0 +1,1 @@
+{"n_hidden": 150, "nbg": 100, "inputs": {"go": [1, true]}, "bg_layers": null, "network": "RNNStaticBG", "task": "SineGeneration", "ncontext": 1}
