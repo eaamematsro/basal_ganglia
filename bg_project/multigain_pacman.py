@@ -25,13 +25,13 @@ if __name__ == '__main__':
     torch.set_float32_matmul_precision('medium')
     simple_model = MultiGainPacMan(network="VanillaRNN")
 
-    dataset = PacmanDataset()
-    batch_size = 2
+    dataset = PacmanDataset(gains=(1, ), polarity=(1, ), viscosity=(0, ))
+    batch_size = 5
 
     train_set, val_set, test_set = split_dataset(dataset, (.6, .2, .2))
 
-    train_loader = DataLoader(train_set['data'], batch_size=batch_size, sampler=train_set['sampler'], num_workers=10)
-    val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=8)
+    train_loader = DataLoader(train_set['data'], batch_size=batch_size, sampler=train_set['sampler'], num_workers=1)
+    val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=1)
 
     save_path = set_results_path(type(simple_model).__name__)[0]
 
@@ -41,33 +41,33 @@ if __name__ == '__main__':
     trainer.fit(model=simple_model, train_dataloaders=train_loader, val_dataloaders=val_loader
                 )
 
-    trainer.test(simple_model, dataloaders=DataLoader(test_set, num_workers=8))
+    trainer.test(simple_model, dataloaders=DataLoader(test_set, num_workers=1))
 
     simple_model.save_model()
 
-    # for nbg in [10, 25, 50]:
-    #     thalamic_model = GenerateSinePL(network="RNNStaticBG", nbg=nbg)
-    #
-    #     # Transfer and freeze weights from trained network's rnn module
-    #     transfer_network_weights(thalamic_model.network, simple_model.network,
-    #                              freeze=True)
-    #     # thalamic_model.network.rnn.reconfigure_u_v()
-    #
-    #     train_set, val_set, test_set = split_dataset(SineDataset(frequency=2), (.6, .2, .2))
-    #
-    #     train_loader = DataLoader(train_set['data'], batch_size=24, sampler=train_set['sampler'], num_workers=10)
-    #     val_loader = DataLoader(val_set['data'], batch_size=24, sampler=val_set['sampler'], num_workers=10)
-    #
-    #     save_path = set_results_path(type(thalamic_model).__name__)[0]
-    #
-    #     trainer = Trainer(max_epochs=750, gradient_clip_val=1,
-    #                       accelerator='gpu', devices=4, default_root_dir=save_path,
-    #                       )
-    #     trainer.fit(model=thalamic_model, train_dataloaders=train_loader, val_dataloaders=val_loader
-    #                 )
-    #
-    #     trainer.test(thalamic_model, dataloaders=DataLoader(test_set, num_workers=10))
-    #     thalamic_model.save_model()
+    for nbg in [10, 25, 50]:
+        thalamic_model = MultiGainPacMan(network="RNNStaticBG", nbg=nbg)
+
+        # Transfer and freeze weights from trained network's rnn module
+        transfer_network_weights(thalamic_model.network, simple_model.network,
+                                 freeze=True)
+        # thalamic_model.network.rnn.reconfigure_u_v()
+
+        train_set, val_set, test_set = split_dataset(PacmanDataset(), (.6, .2, .2))
+
+        train_loader = DataLoader(train_set['data'], batch_size=batch_size, sampler=train_set['sampler'], num_workers=1)
+        val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=1)
+
+        save_path = set_results_path(type(thalamic_model).__name__)[0]
+
+        trainer = Trainer(max_epochs=750, gradient_clip_val=1,
+                          accelerator='mps', devices=1, default_root_dir=save_path,
+                          )
+        trainer.fit(model=thalamic_model, train_dataloaders=train_loader, val_dataloaders=val_loader
+                    )
+
+        trainer.test(thalamic_model, dataloaders=DataLoader(test_set, num_workers=1))
+        thalamic_model.save_model()
 
 
 

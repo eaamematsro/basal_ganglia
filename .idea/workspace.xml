@@ -5,8 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="068be01d-770f-4bcd-8be5-cef8b961c4d1" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/csv-editor.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/basal_ganglia.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/basal_ganglia.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bg_project/datasets/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/datasets/tasks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bg_project/multigain_pacman.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/multigain_pacman.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -54,7 +56,7 @@
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
     &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
     &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyIntegratedToolsModulesConfigurable&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
@@ -111,6 +113,8 @@
       <workItem from="1690541446571" duration="2826000" />
       <workItem from="1690974020210" duration="546000" />
       <workItem from="1691515349665" duration="438000" />
+      <workItem from="1693311714843" duration="6040000" />
+      <workItem from="1693329731050" duration="1672000" />
     </task>
     <servers />
   </component>

@@ -373,14 +373,17 @@ class MultiGainPacMan(Task):
 
         position_store = torch.zeros(self.duration, batch_size, 1, device=self.network.Wout.device)
         position = torch.zeros(batch_size, 1, device=self.network.Wout.device)
+        velocity = torch.zeros(batch_size, 1, device=self.network.Wout.device)
         bg_inputs = {'context': contexts}
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):
             rnn_input = {'displacement': (targets[ti - 1] - position_store[ti - 1].squeeze())[:, None]}
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
-            velocity = (outputs['r_act'] @ self.network.Wout) * ((1 - contexts[1]) * contexts[0])[:, None]
-            position_store[ti] = position + velocity * contexts[2][:, None]
+            acceleration = ((outputs['r_act'] @ self.network.Wout) * (contexts[0] * contexts[2])[:, None] -
+                            velocity * contexts[1][:, None])
+            velocity = velocity + self.dt * acceleration
+            position_store[ti] = position + self.dt * velocity
         return position_store
 
     def compute_loss(self, target: torch.Tensor, model_output: torch.Tensor):
