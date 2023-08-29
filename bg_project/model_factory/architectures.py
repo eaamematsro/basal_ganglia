@@ -61,7 +61,7 @@ class VanillaRNN(BaseArchitecture):
     """Vanilla RNN class with no other areas"""
     def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 device: Optional[torch.device] = None, dt: float = .05, tau: float = .15,
+                 dt: float = .05, tau: float = .15,
                  **kwargs):
         super(VanillaRNN, self).__init__()
         self.params = {
@@ -70,7 +70,7 @@ class VanillaRNN(BaseArchitecture):
             'network': type(self).__name__
         }
         self.rnn = RNN(nneurons=nneurons, non_linearity=non_linearity,
-                      g0=g0, input_sources=input_sources, device=device,
+                      g0=g0, input_sources=input_sources,
                       dt=dt, tau=tau)
 
     def forward(self, rnn_inputs: Optional[Dict[str, torch.Tensor]] = None,
@@ -88,7 +88,7 @@ class VanillaRNN(BaseArchitecture):
 class RNNStaticBG(BaseArchitecture):
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 dt: float = .05, tau: float = .15, device: Optional[torch.device] = None,
+                 dt: float = .05, tau: float = .15,
                  bg_layer_sizes: Optional[Tuple[int, ...]] = None, bg_nfn:  Optional[nn.Module] = None,
                  bg_input_size: Optional[int] = 1, include_bias: bool = True, **kwargs):
         super(RNNStaticBG, self).__init__()
@@ -100,7 +100,7 @@ class RNNStaticBG(BaseArchitecture):
             'network': type(self).__name__
         }
         self.rnn = ThalamicRNN(nneurons=nneurons, nbg=nbg, non_linearity=non_linearity, g0=g0,
-                               input_sources=input_sources, dt=dt, tau=tau, device=device,
+                               input_sources=input_sources, dt=dt, tau=tau,
                                )
         self.bg = MLP(layer_sizes=bg_layer_sizes, non_linearity=bg_nfn, input_size=bg_input_size,
                       output_size=nbg, include_bias=include_bias)
@@ -123,7 +123,7 @@ class RNNStaticBG(BaseArchitecture):
 class RNNFeedbackBG(BaseArchitecture):
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 dt: float = .05, tau: float = .15, device: Optional[torch.device] = None,
+                 dt: float = .05, tau: float = .15,
                  bg_ind_layer_sizes: Optional[Tuple[int, ...]] = None, shared_layer_sizes: Optional[Tuple[int, ...]]
                  = None, bg_nfn:  Optional[nn.Module] = None, bg_input_size: Optional[int] = 10, context_rank: int = 1,
                  include_bias: bool = True, **kwargs):
@@ -137,7 +137,7 @@ class RNNFeedbackBG(BaseArchitecture):
             'network': type(self).__name__
         }
         self.rnn = ThalamicRNN(nneurons=nneurons, nbg=nbg, non_linearity=non_linearity, g0=g0,
-                               input_sources=input_sources, dt=dt, tau=tau, device=device)
+                               input_sources=input_sources, dt=dt, tau=tau)
         if bg_ind_layer_sizes is None:
             bg_ind_layer_sizes = ((25, 12), context_rank)
         else:

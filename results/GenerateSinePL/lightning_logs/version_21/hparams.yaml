@@ -1,0 +1,5 @@
+network: VanillaRNN
+nneurons: 150
+duration: 500
+nbg: 10
+ncontext: 1

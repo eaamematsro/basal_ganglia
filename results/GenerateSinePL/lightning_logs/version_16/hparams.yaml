@@ -1,0 +1,5 @@
+network: RNNStaticBG
+nneurons: 150
+duration: 500
+nbg: 5
+ncontext: 1

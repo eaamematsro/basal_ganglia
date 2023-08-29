@@ -4,7 +4,7 @@ import pdb
 import torch
 import numpy as np
 import torch.nn as nn
-from .noise_models import GaussainNoise, GaussianSignalDependentNoise
+from .noise_models import GaussianNoise, GaussianSignalDependentNoise
 from .factory_utils import torchify
 from typing import Callable, Optional, Dict, List, Tuple
 
@@ -28,18 +28,13 @@ class RNN(Module):
 
     def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15,
+                 dt: float = 5e-2, tau: float = .15,
                  noise_model: Optional[nn.Module] = None):
         super(RNN, self).__init__()
 
-        if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            device = self.device
-        else:
-            self.device = device
 
         if noise_model is None:
-            noise_model = GaussainNoise(sigma=np.sqrt(2 * dt/tau))
+            noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
 
         if non_linearity is None:
             non_linearity = nn.Softplus()
@@ -51,17 +46,17 @@ class RNN(Module):
         if input_sources is not None:
             for input_name, (input_size, learnable) in input_sources.items():
                 input_mat = np.random.randn(input_size, nneurons) / np.sqrt(nneurons)
-                input_tens = torchify(input_mat, device)
+                input_tens = torchify(input_mat)
                 if learnable:
                     self.I[input_name] = nn.Parameter(input_tens)
                 else:
                     self.I[input_name] = input_tens
 
         J_mat = (g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons))
-        J_mat = torchify(J_mat, device=device)
+        J_mat = torchify(J_mat)
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
-        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons), device))
+        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons)))
         self.noise_model = noise_model
         self.x, self.r = None, None
         self.dt = dt
@@ -86,7 +81,8 @@ class RNN(Module):
         return self.x, self.r
 
     def reset_state(self, batch_size: int = 10):
-        self.x = torch.randn((batch_size, self.J.shape[0])) / np.sqrt(self.J.shape[0])
+
+        self.x = torch.randn((batch_size, self.J.shape[0]), device=self.J.device) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
 
@@ -95,21 +91,16 @@ class ThalamicRNN(Module):
 
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 device: Optional[torch.device] = None, dt: float = 5e-2, tau: float = .15,
+                dt: float = 5e-2, tau: float = .15,
                  noise_model: Optional[nn.Module] = None):
         super(ThalamicRNN, self).__init__()
 
-        if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            device = self.device
-        else:
-            self.device = device
 
         if non_linearity is None:
             non_linearity = nn.Softplus()
 
         if noise_model is None:
-            noise_model = GaussainNoise(sigma=np.sqrt(2 * dt/tau))
+            noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
 
         self.nonlinearity = non_linearity
 
@@ -118,19 +109,19 @@ class ThalamicRNN(Module):
         if input_sources is not None:
             for input_name, (input_size, learnable) in input_sources.items():
                 input_mat = np.random.randn(input_size, nneurons) / np.sqrt(nneurons)
-                input_tens = torchify(input_mat, device)
+                input_tens = torchify(input_mat)
                 if learnable:
                     self.I[input_name] = nn.Parameter(input_tens)
                 else:
                     self.I[input_name] = input_tens
 
         J_mat = (g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons))
-        J_mat = torchify(J_mat, device=device)
+        J_mat = torchify(J_mat)
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
-        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons), device))
-        self.U = torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons), device)
-        self.V = torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons), device)
+        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
+        self.U = nn.Parameter(torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)), requires_grad=False)
+        self.V = nn.Parameter(torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)), requires_grad=False)
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
@@ -160,6 +151,8 @@ class ThalamicRNN(Module):
 
         rec_input = torch.einsum('ij, kj, jl, ki -> kl',
                                  self.U, r_thalamic, self.V, self.r)
+
+
         x = self.x + self.dt / self.tau * (
                self.noise_model(-self.x + self.r @ self.J +
                                 rec_input + self.B + out, noise_scale)
@@ -171,7 +164,7 @@ class ThalamicRNN(Module):
         return self.x, self.r
 
     def reset_state(self, batch_size: int = 10):
-        self.x = torch.randn((batch_size, self.J.shape[0])) / np.sqrt(self.J.shape[0])
+        self.x = torch.randn((batch_size, self.J.shape[0]), device=self.J.device) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
 
@@ -187,7 +180,7 @@ class MLP(Module):
             non_linearity = nn.Softplus()
 
         if noise_model is None:
-            noise_model = GaussainNoise(sigma=.25)
+            noise_model = GaussianNoise(sigma=.25)
 
         modules = []
         layer_sizes = layer_sizes + (output_size,)

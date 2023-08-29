@@ -1,13 +1,13 @@
 import pdb
 
 import numpy as np
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from model_factory.factory_utils import torchify
 from scipy.ndimage import gaussian_filter1d
 
 
 class SineDataset(Dataset):
-    def __init__(self, n_unique_pulses: int = 24, pulse_width: int = 10,
+    def __init__(self, n_unique_pulses: int = 250, pulse_width: int = 10,
                 frequency: float = 1, delay: int = 0, amplitude: int = 1,
                 duration: int = 500, dt: float = 5e-2):
         
@@ -26,6 +26,7 @@ class SineDataset(Dataset):
             pulses[(pulse_start + 3 * period): (pulse_start + pulse_width + 3 * period), idx] = -1
 
         pulses = torchify(gaussian_filter1d(pulses, sigma=1, axis=0))
+        targets = torchify(targets)
         self.x = pulses
         self.y = targets
         self.samples = n_unique_pulses
