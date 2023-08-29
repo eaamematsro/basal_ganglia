@@ -48,10 +48,10 @@ class PacmanDataset(Dataset):
                  gains: Sequence = None, viscosity: Sequence = None, polarity: Sequence = None):
         super(PacmanDataset, self).__init__()
         if gains is None:
-            gains = (0.25, 0.5, 1)
+            gains = (0.5, 1, 1.5)
 
         if viscosity is None:
-            viscosity = (0, 0.5, 1)
+            viscosity = (0, 0.05, .1)
 
         if polarity is None:
             polarity = (-1, 1)
@@ -68,8 +68,8 @@ class PacmanDataset(Dataset):
             contexts[idx] = np.asarray([gain, visc, polar])
             out_targets[idx] = trajectory
 
-        self.x = torchify(contexts)
-        self.y = torchify(out_targets)
+        self.x = torchify(contexts).T
+        self.y = torchify(out_targets).T
         self.samples = n_entries
 
     def __getitem__(self, item):
@@ -81,7 +81,7 @@ class PacmanDataset(Dataset):
         Returns:
 
         """
-        return self.x[item], self.y[item]
+        return self.x[:, item], self.y[:, item]
 
     def __len__(self):
         """"""

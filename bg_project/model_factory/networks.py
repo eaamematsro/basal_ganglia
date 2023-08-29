@@ -69,6 +69,7 @@ class RNN(Module):
             assert input_names.intersection(self.input_names) == input_names
         out = 0
         for input_name, input_value in inputs.items():
+            # print(input_name, input_value.shape, self.I[input_name].shape)
             out += input_value @ self.I[input_name]
 
         x = self.x + self.dt / self.tau * (

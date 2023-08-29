@@ -233,9 +233,7 @@ class GenerateSine(Task):
 class GenerateSinePL(Task):
     def __init__(self, network: Optional[str] = "RNNFeedbackBG",
                  nneurons: int = 150, duration: int = 500,
-                 nbg: int = 10,
-
-                 **kwargs):
+                 nbg: int = 10, **kwargs):
 
         kwargs['ncontext'] = 1
         rnn_input_source = {
@@ -332,6 +330,92 @@ class GenerateSinePL(Task):
         x, y = batch
         positions = self.forward(x.T)
         loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+        self.log('hp/metric_2', loss, sync_dist=True)
+        self.log('hp_metric', loss, sync_dist=True)
+        return loss
+
+
+class MultiGainPacMan(Task):
+    def __init__(self, network: Optional[str] = "RNNFeedbackBG",
+                 nneurons: int = 150, duration: int = 500,
+                 nbg: int = 10, ncontext: int = 3, **kwargs):
+
+        kwargs['ncontext'] = ncontext
+        rnn_input_source = {
+            'displacement': (1, True)
+        }
+
+        super(MultiGainPacMan, self).__init__(network=network, nneurons=nneurons, nbg=nbg,
+                                              input_sources=rnn_input_source, include_bias=False, **kwargs)
+
+        self.save_hyperparameters()
+        self.network.params.update({'task': "MultiGainPacMan"})
+        self.network.params.update(kwargs)
+
+        self.network.Wout = nn.Parameter(
+            torchify(np.random.randn(nneurons, 1) / np.sqrt(nneurons))
+        )
+        self.duration = duration
+        self.dt = self.network.rnn.dt
+        self.optimizer = None
+
+    def configure_optimizers(self):
+        """"""
+        self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
+        return self.optimizer
+
+    def forward(self, contexts: torch.Tensor, targets: torch.Tensor) -> Any:
+        ""
+        if contexts.ndim == 1:
+            contexts = contexts[:, None]
+        batch_size = contexts.shape[1]
+
+        position_store = torch.zeros(self.duration, batch_size, 1, device=self.network.Wout.device)
+        position = torch.zeros(batch_size, 1, device=self.network.Wout.device)
+        bg_inputs = {'context': contexts}
+        self.network.rnn.reset_state(batch_size)
+
+        for ti in range(self.duration):
+            rnn_input = {'displacement': (targets[ti - 1] - position_store[ti - 1].squeeze())[:, None]}
+            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
+            velocity = (outputs['r_act'] @ self.network.Wout) * ((1 - contexts[1]) * contexts[0])[:, None]
+            position_store[ti] = position + velocity * contexts[2][:, None]
+        return position_store
+
+    def compute_loss(self, target: torch.Tensor, model_output: torch.Tensor):
+        loss = nn.functional.mse_loss(model_output, target)
+        return loss
+
+    def training_step(
+        self, batch: torch.Tensor,
+            batch_idx
+    ) -> torch.Tensor:
+
+        x, y = batch
+        positions = self.forward(x.T, y.T)
+        loss = self.compute_loss(y.T, positions.squeeze())
+        self.log("train_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+        return loss
+
+    def validation_step(
+        self, batch: torch.Tensor, batch_idx
+    ) -> torch.Tensor:
+
+        x, y = batch
+        positions = self.forward(x.T, y.T)
+        loss = self.compute_loss(y.T, positions.squeeze())
+        self.log("val_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+        self.log('hp/metric_1', loss, sync_dist=True)
+        return loss
+
+    def test_step(
+        self, batch: torch.Tensor, batch_idx
+    ) -> torch.Tensor:
+
+        x, y = batch
+        positions = self.forward(x.T, y.T)
+        loss = self.compute_loss(y.T, positions.squeeze())
         self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
         self.log('hp/metric_2', loss, sync_dist=True)
         self.log('hp_metric', loss, sync_dist=True)
