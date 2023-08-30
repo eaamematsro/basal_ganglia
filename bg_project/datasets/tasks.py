@@ -374,7 +374,7 @@ class MultiGainPacMan(Task):
         position_store = torch.zeros(self.duration, batch_size, 1, device=self.network.Wout.device)
         position = torch.zeros(batch_size, 1, device=self.network.Wout.device)
         velocity = torch.zeros(batch_size, 1, device=self.network.Wout.device)
-        bg_inputs = {'context': contexts}
+        bg_inputs = {'context': contexts.T}
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):

@@ -75,13 +75,53 @@ class VanillaRNN(BaseArchitecture):
 
     def forward(self, rnn_inputs: Optional[Dict[str, torch.Tensor]] = None,
                 **kwargs):
-        r_hidden, r_act = self.rnn(rnn_inputs)
+        r_hidden, r_act = self.rnn.forward(rnn_inputs)
         return {'r_hidden': r_hidden, 'r_act': r_act}
 
     def description(self,):
         """"""
         print(
             "A basic RNN with inputs"
+        )
+
+class RNNMultiContextInput(BaseArchitecture):
+    def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
+                 g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+                 dt: float = .05, tau: float = .15,
+                 bg_layer_sizes: Optional[Tuple[int, ...]] = None, bg_nfn:  Optional[nn.Module] = None,
+                 bg_input_size: Optional[int] = 1, include_bias: bool = True, **kwargs):
+        super(RNNMultiContextInput, self).__init__()
+        self.params = {
+            'n_hidden': nneurons,
+            'nbg': nbg,
+            'inputs': input_sources,
+            'bg_layers': bg_layer_sizes,
+            'network': type(self).__name__
+        }
+        if input_sources is None:
+            input_sources = {}
+
+        input_sources.update({'contextual': (nbg, True)})
+        self.rnn = RNN(nneurons=nneurons, non_linearity=non_linearity, g0=g0,
+                               input_sources=input_sources, dt=dt, tau=tau,
+                               )
+        self.bg = MLP(layer_sizes=bg_layer_sizes, non_linearity=bg_nfn, input_size=bg_input_size,
+                      output_size=nbg, include_bias=include_bias)
+
+    def forward(self, bg_inputs: Dict[str, torch.Tensor],
+                rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):
+
+        bg_input = next(iter(bg_inputs.values()))
+        bg_act = self.bg.forward(bg_input)
+        rnn_inputs.update({'contextual': bg_act})
+        r_hidden, r_act = self.rnn.forward(inputs=rnn_inputs, **kwargs)
+        return {'r_hidden': r_hidden, 'r_act': r_act, 'bg_act': bg_act}
+
+    def description(self,):
+        """"""
+        print(
+            "A RNN designed for multitasking that receives contextual inputs"
+            " via input vectors."
         )
 
 
@@ -167,8 +207,10 @@ class RNNFeedbackBG(BaseArchitecture):
         )
 
 
+
 NETWORKS = {
             "VanillaRNN": VanillaRNN,
             "RNNStaticBG": RNNStaticBG,
             "RNNFeedbackBG": RNNFeedbackBG,
+            "RNNMultiContextInput": RNNMultiContextInput,
             }

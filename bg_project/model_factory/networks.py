@@ -24,12 +24,33 @@ class Module(nn.Module, metaclass=abc.ABCMeta):
 
 
 class RNN(Module):
-    """ Base class for recurrent neural networks"""
 
     def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
                  g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
                  dt: float = 5e-2, tau: float = .15,
                  noise_model: Optional[nn.Module] = None):
+        """
+        Base class for recurrent neural networks
+
+        Args:
+            nneurons: int, optional
+                Number of recurrently connected neurons to use. by default 100
+            non_linearity: nn.Module, optional
+                Activation function to use for neural responses. by default SoftPlus
+            g0: float, optional
+                Gain multiplier of initial recurrent weights.
+            input_sources: Dict[str, Tuple[int, bool], optional
+                A dictionary that stores external inputs to the RNN. Keys are given by the
+                input name and the values are a tuple consisting of an integer (corresponding to the
+                dimensionality of the input) and a boolean (corresponding to whether these weights
+                are learnable)
+            dt: float, optional
+                Network time step size, by default 0.05
+            tau: float, optional
+                Network membrane time constant, by default 0.15
+            noise_model:  nn.Module, optional
+                Model used to inject noise into neural activity, by default GaussianNoise
+        """
         super(RNN, self).__init__()
 
 
