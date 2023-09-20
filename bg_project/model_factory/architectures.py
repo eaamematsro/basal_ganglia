@@ -19,7 +19,13 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         self.save_path = None
         self.text_path = None
         self.params = {}
+        self.output_names = None
         self.set_save_path()
+        self.set_outputs()
+
+    @abc.abstractmethod
+    def set_outputs(self):
+        """Define keys of the network output"""
 
     @abc.abstractmethod
     def forward(self, **kwargs) -> Dict[str, torch.Tensor]:
@@ -73,6 +79,9 @@ class VanillaRNN(BaseArchitecture):
                       g0=g0, input_sources=input_sources,
                       dt=dt, tau=tau)
 
+    def set_outputs(self):
+        self.output_names = ['r_hidden', 'r_act']
+
     def forward(self, rnn_inputs: Optional[Dict[str, torch.Tensor]] = None,
                 **kwargs):
         r_hidden, r_act = self.rnn.forward(rnn_inputs)
@@ -83,6 +92,7 @@ class VanillaRNN(BaseArchitecture):
         print(
             "A basic RNN with inputs"
         )
+
 
 class RNNMultiContextInput(BaseArchitecture):
     def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
@@ -107,6 +117,9 @@ class RNNMultiContextInput(BaseArchitecture):
                                )
         self.bg = MLP(layer_sizes=bg_layer_sizes, non_linearity=bg_nfn, input_size=bg_input_size,
                       output_size=nbg, include_bias=include_bias)
+
+    def set_outputs(self):
+        self.output_names = ['r_hidden', 'r_act', 'bg_act']
 
     def forward(self, bg_inputs: Dict[str, torch.Tensor],
                 rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):
@@ -144,6 +157,9 @@ class RNNStaticBG(BaseArchitecture):
                                )
         self.bg = MLP(layer_sizes=bg_layer_sizes, non_linearity=bg_nfn, input_size=bg_input_size,
                       output_size=nbg, include_bias=include_bias)
+
+    def set_outputs(self):
+        self.output_names = ['r_hidden', 'r_act', 'bg_act']
 
     def forward(self, bg_inputs: Dict[str, torch.Tensor],
                 rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):
@@ -190,6 +206,9 @@ class RNNFeedbackBG(BaseArchitecture):
         self.bg = MultiHeadMLP(independent_layers=bg_inputs, shared_layer_sizes=shared_layer_sizes,
                                non_linearity=bg_nfn, input_size=bg_input_size, output_size=nbg,
                                include_bias=include_bias)
+
+    def set_outputs(self):
+        self.output_names = ['r_hidden', 'r_act', 'bg_act']
 
     def forward(self, bg_inputs: Dict[str, torch.Tensor],
                 rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):
