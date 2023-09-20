@@ -1,4 +1,6 @@
 import pdb
+
+import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from typing import Sequence
@@ -22,57 +24,63 @@ def split_dataset(dataset, fractions: Sequence = (.6, .2, .2)):
 
 
 if __name__ == '__main__':
-    test_networks = ["RNNMultiContextInput", "RNNStaticBG",]
+    test_networks = ["RNNStaticBG", "RNNMultiContextInput"]
 
+    weight_penalties = np.logspace(-5, 1)
     torch.set_float32_matmul_precision('medium')
-    simple_model = MultiGainPacMan(network="VanillaRNN", bg_input_size=3)
 
-    dataset = PacmanDataset(n_samples=500, masses=(1,), viscosity=(0,), polarity=(1,))
-    batch_size = 10
+    for weight_penalty in weight_penalties:
 
-    train_set, val_set, test_set = split_dataset(dataset, (.6, .2, .2))
+        simple_model = MultiGainPacMan(network="VanillaRNN", bg_input_size=3,
+                                       apply_energy_penalty=('r_act', ), output_weight_penalty=weight_penalty)
+        dataset = PacmanDataset(n_samples=500, masses=(1,), viscosity=(0,), polarity=(1,))
+        batch_size = 10
 
-    train_loader = DataLoader(train_set['data'], batch_size=batch_size, sampler=train_set['sampler'], num_workers=10)
-    val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=10)
+        train_set, val_set, test_set = split_dataset(dataset, (.6, .2, .2))
 
-    save_path = set_results_path(type(simple_model).__name__)[0]
+        train_loader = DataLoader(train_set['data'], batch_size=batch_size, sampler=train_set['sampler'], num_workers=10)
+        val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=10)
 
-    trainer = Trainer(max_epochs=50, gradient_clip_val=1,
-                      accelerator='gpu', devices=4, default_root_dir=save_path,
-                      )
-    trainer.fit(model=simple_model, train_dataloaders=train_loader, val_dataloaders=val_loader
-                )
+        save_path = set_results_path(type(simple_model).__name__)[0]
 
-    trainer.test(simple_model, dataloaders=DataLoader(test_set['data'], num_workers=10))
+        trainer = Trainer(max_epochs=150, gradient_clip_val=1,
+                          accelerator='gpu', devices=4, default_root_dir=save_path,
+                          )
+        trainer.fit(model=simple_model, train_dataloaders=train_loader, val_dataloaders=val_loader
+                    )
 
-    simple_model.save_model()
-    for network in test_networks:
-        for nbg in [10, 25, 50]:
-            thalamic_model = MultiGainPacMan(network=network, nbg=nbg, bg_input_size=3)
+        trainer.test(simple_model, dataloaders=DataLoader(test_set['data'], num_workers=10))
 
-            # Transfer and freeze weights from trained network's rnn module
-            transfer_network_weights(thalamic_model.network, simple_model.network,
-                                     freeze=True)
+        simple_model.save_model()
+        for network in test_networks:
+            for nbg in [10, 25, 50]:
+                thalamic_model = MultiGainPacMan(
+                    network=network, nbg=nbg, bg_input_size=3, apply_energy_penalty=('r_act', 'bg_act'),
+                    output_weight_penalty=0)
 
-            # thalamic_model.network.rnn.reconfigure_u_v()
+                # Transfer and freeze weights from trained network's rnn module
+                transfer_network_weights(thalamic_model.network, simple_model.network,
+                                         freeze=True)
 
-            train_set, val_set, test_set = split_dataset(PacmanDataset(n_samples=25), (.6, .2, .2))
+                # thalamic_model.network.rnn.reconfigure_u_v()
 
-            train_loader = DataLoader(train_set['data'], batch_size=batch_size,
-                                      sampler=train_set['sampler'], num_workers=10)
-            
-            val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=10)
+                train_set, val_set, test_set = split_dataset(PacmanDataset(n_samples=25), (.6, .2, .2))
 
-            save_path = set_results_path(type(thalamic_model).__name__)[0]
+                train_loader = DataLoader(train_set['data'], batch_size=batch_size,
+                                          sampler=train_set['sampler'], num_workers=10)
 
-            trainer = Trainer(max_epochs=500, gradient_clip_val=1,
-                              accelerator='gpu', devices=4, default_root_dir=save_path,
-                              )
-            trainer.fit(model=thalamic_model, train_dataloaders=train_loader, val_dataloaders=val_loader
-                        )
+                val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=10)
 
-            trainer.test(thalamic_model, dataloaders=DataLoader(test_set['data'], num_workers=10))
-            thalamic_model.save_model()
+                save_path = set_results_path(type(thalamic_model).__name__)[0]
+
+                trainer = Trainer(max_epochs=500, gradient_clip_val=1,
+                                  accelerator='gpu', devices=4, default_root_dir=save_path,
+                                  )
+                trainer.fit(model=thalamic_model, train_dataloaders=train_loader, val_dataloaders=val_loader
+                            )
+
+                trainer.test(thalamic_model, dataloaders=DataLoader(test_set['data'], num_workers=10))
+                thalamic_model.save_model()
 
 
 
