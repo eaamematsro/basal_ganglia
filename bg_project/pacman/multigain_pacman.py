@@ -31,21 +31,6 @@ if __name__ == '__main__':
     batch_size = 10
 
     train_set, val_set, test_set = split_dataset(dataset, (.6, .2, .2))
-    # val_contexts = []
-    # test_contexts = []
-    # plt.figure()
-    # plt.title('Validation')
-    # for context, trajectory in val_set['data']:
-    #     val_contexts.append(context)
-    #     plt.plot(trajectory)
-    # plt.pause(0.1)
-    # plt.figure()
-    # plt.title('Testing')
-    # for context, trajectory in test_set['data']:
-    #     test_contexts.append(context)
-    #     plt.plot(trajectory)
-    # plt.pause(0.1)
-    # pdb.set_trace()
 
     train_loader = DataLoader(train_set['data'], batch_size=batch_size, sampler=train_set['sampler'], num_workers=10)
     val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=10)
@@ -68,6 +53,7 @@ if __name__ == '__main__':
             # Transfer and freeze weights from trained network's rnn module
             transfer_network_weights(thalamic_model.network, simple_model.network,
                                      freeze=True)
+
             # thalamic_model.network.rnn.reconfigure_u_v()
 
             train_set, val_set, test_set = split_dataset(PacmanDataset(n_samples=25), (.6, .2, .2))
@@ -85,7 +71,7 @@ if __name__ == '__main__':
             trainer.fit(model=thalamic_model, train_dataloaders=train_loader, val_dataloaders=val_loader
                         )
 
-            trainer.test(thalamic_model, dataloaders=DataLoader(test_set, num_workers=10))
+            trainer.test(thalamic_model, dataloaders=DataLoader(test_set['data'], num_workers=10))
             thalamic_model.save_model()
 
 
