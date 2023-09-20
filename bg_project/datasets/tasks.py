@@ -340,7 +340,7 @@ class MultiGainPacMan(Task):
     def __init__(self, network: Optional[str] = "RNNFeedbackBG",
                  nneurons: int = 150, duration: int = 500,
                  nbg: int = 10, ncontext: int = 3, apply_energy_penalty: Optional[Tuple[str, ...]] = None,
-                 energy_penalty: float = 1e-3,
+                 energy_penalty: float = 1e-3, output_weight_penalty: float = 1e-3,
                  **kwargs):
         if apply_energy_penalty is None:
             apply_energy_penalty = ()
@@ -365,6 +365,7 @@ class MultiGainPacMan(Task):
         self.dt = self.network.rnn.dt
         self.optimizer = None
         self.energy_penalty = energy_penalty
+        self.output_weight_penalty = output_weight_penalty
 
     def configure_optimizers(self):
         """"""
@@ -402,11 +403,13 @@ class MultiGainPacMan(Task):
 
     def compute_loss(self, target: torch.Tensor, model_output: torch.Tensor, network_energy: dict) -> dict:
         trajectory_loss = nn.functional.mse_loss(model_output, target)
+        output_weight_loss = self.output_weight_penalty * torch.linalg.norm(self.network.Wout)
         energy_loss = 0
         for key in self.penalize_activity:
             energy_loss = energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
-        total_loss = trajectory_loss + self.energy_penalty * energy_loss
-        loss = {'energy': self.energy_penalty * energy_loss, 'trajectory': trajectory_loss, 'total': total_loss}
+        total_loss = trajectory_loss + self.energy_penalty * energy_loss + output_weight_loss
+        loss = {'energy': self.energy_penalty * energy_loss, 'trajectory': trajectory_loss,
+                'output_weight': output_weight_loss, 'total': total_loss}
         return loss
 
     def training_step(
