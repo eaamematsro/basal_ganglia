@@ -378,10 +378,11 @@ class MultiGainPacMan(Task):
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):
-            rnn_input = {'displacement': (targets[ti - 1] - position_store[ti - 1].squeeze())[:, None]}
+            rnn_input = {'displacement': torch.clip(
+                (targets[ti - 1] - position_store[ti - 1].squeeze()), -5, 5)[:, None]}
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
-            acceleration = ((outputs['r_act'] @ self.network.Wout) * (contexts[0] * contexts[2])[:, None] -
-                            velocity * contexts[1][:, None])
+            acceleration = ((outputs['r_act'] @ self.network.Wout) * (contexts[2])[:, None] -
+                            velocity * contexts[1][:, None]) / (contexts[0][:, None])
             velocity = velocity + self.dt * acceleration
             position_store[ti] = position + self.dt * velocity
         return position_store
@@ -418,7 +419,7 @@ class MultiGainPacMan(Task):
 
         x, y = batch
         positions = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T, positions.squeeze())
+        loss = self.compute_loss(y.T.squeeze(), positions.squeeze())
         self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
         self.log('hp/metric_2', loss, sync_dist=True)
         self.log('hp_metric', loss, sync_dist=True)

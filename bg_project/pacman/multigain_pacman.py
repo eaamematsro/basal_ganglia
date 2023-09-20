@@ -13,38 +13,52 @@ plt.style.use('ggplot')
 def split_dataset(dataset, fractions: Sequence = (.6, .2, .2)):
     train_set, val_set, test_set = random_split(dataset, fractions)
     train_sampler = RandomSampler(train_set)
-    val_sampler = RandomSampler(train_set)
+    val_sampler = RandomSampler(val_set)
+    test_sampler = RandomSampler(test_set)
     train = {'data': train_set, 'sampler': train_sampler}
     val = {'data': val_set, 'sampler': val_sampler}
-
-    return train, val, test_set
-
-
+    test = {'data': test_set, 'sampler': test_sampler}
+    return train, val, test
 
 
 if __name__ == '__main__':
-    test_networks = ["RNNStaticBG", "RNNMultiContextInput"]
+    test_networks = ["RNNMultiContextInput", "RNNStaticBG",]
 
     torch.set_float32_matmul_precision('medium')
     simple_model = MultiGainPacMan(network="VanillaRNN", bg_input_size=3)
 
-    dataset = PacmanDataset(gains=(1, ), polarity=(1, ), viscosity=(0, ), n_samples=500)
+    dataset = PacmanDataset(n_samples=500, masses=(1,), viscosity=(0,), polarity=(1,))
     batch_size = 10
 
     train_set, val_set, test_set = split_dataset(dataset, (.6, .2, .2))
+    # val_contexts = []
+    # test_contexts = []
+    # plt.figure()
+    # plt.title('Validation')
+    # for context, trajectory in val_set['data']:
+    #     val_contexts.append(context)
+    #     plt.plot(trajectory)
+    # plt.pause(0.1)
+    # plt.figure()
+    # plt.title('Testing')
+    # for context, trajectory in test_set['data']:
+    #     test_contexts.append(context)
+    #     plt.plot(trajectory)
+    # plt.pause(0.1)
+    # pdb.set_trace()
 
     train_loader = DataLoader(train_set['data'], batch_size=batch_size, sampler=train_set['sampler'], num_workers=10)
     val_loader = DataLoader(val_set['data'], batch_size=batch_size, num_workers=10)
 
     save_path = set_results_path(type(simple_model).__name__)[0]
 
-    trainer = Trainer(max_epochs=250, gradient_clip_val=1,
+    trainer = Trainer(max_epochs=50, gradient_clip_val=1,
                       accelerator='gpu', devices=4, default_root_dir=save_path,
                       )
     trainer.fit(model=simple_model, train_dataloaders=train_loader, val_dataloaders=val_loader
                 )
 
-    trainer.test(simple_model, dataloaders=DataLoader(test_set, num_workers=10))
+    trainer.test(simple_model, dataloaders=DataLoader(test_set['data'], num_workers=10))
 
     simple_model.save_model()
     for network in test_networks:
