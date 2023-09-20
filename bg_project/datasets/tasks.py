@@ -9,7 +9,7 @@ import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from model_factory.architectures import NETWORKS
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
 from scipy.ndimage import gaussian_filter1d
 from model_factory.factory_utils import torchify
 from datetime import date
@@ -339,7 +339,11 @@ class GenerateSinePL(Task):
 class MultiGainPacMan(Task):
     def __init__(self, network: Optional[str] = "RNNFeedbackBG",
                  nneurons: int = 150, duration: int = 500,
-                 nbg: int = 10, ncontext: int = 3, **kwargs):
+                 nbg: int = 10, ncontext: int = 3, apply_energy_penalty: Optional[Tuple[str, ...]] = None,
+                 energy_penalty: float = 1e-3,
+                 **kwargs):
+        if apply_energy_penalty is None:
+            apply_energy_penalty = ()
 
         kwargs['ncontext'] = ncontext
         rnn_input_source = {
@@ -356,9 +360,11 @@ class MultiGainPacMan(Task):
         self.network.Wout = nn.Parameter(
             torchify(np.random.randn(nneurons, 1) / np.sqrt(nneurons))
         )
+        self.penalize_activity = apply_energy_penalty
         self.duration = duration
         self.dt = self.network.rnn.dt
         self.optimizer = None
+        self.energy_penalty = energy_penalty
 
     def configure_optimizers(self):
         """"""
@@ -376,6 +382,8 @@ class MultiGainPacMan(Task):
         velocity = torch.zeros(batch_size, 1, device=self.network.Wout.device)
         bg_inputs = {'context': contexts.T}
         self.network.rnn.reset_state(batch_size)
+        energies = {}
+        [energies.update({key: None}) for key in self.penalize_activity]
 
         for ti in range(self.duration):
             rnn_input = {'displacement': torch.clip(
@@ -385,10 +393,20 @@ class MultiGainPacMan(Task):
                             velocity * contexts[1][:, None]) / (contexts[0][:, None])
             velocity = velocity + self.dt * acceleration
             position_store[ti] = position + self.dt * velocity
-        return position_store
+            for key in self.penalize_activity:
+                if energies[key] is None:
+                    energies[key] = torch.zeros((self.duration, *outputs[key].shape), device=outputs[key].device)
+                energies[key][ti] = outputs[key]
 
-    def compute_loss(self, target: torch.Tensor, model_output: torch.Tensor):
-        loss = nn.functional.mse_loss(model_output, target)
+        return position_store, energies
+
+    def compute_loss(self, target: torch.Tensor, model_output: torch.Tensor, network_energy: dict) -> dict:
+        trajectory_loss = nn.functional.mse_loss(model_output, target)
+        energy_loss = 0
+        for key in self.penalize_activity:
+            energy_loss = energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
+        total_loss = trajectory_loss + self.energy_penalty * energy_loss
+        loss = {'energy': self.energy_penalty * energy_loss, 'trajectory': trajectory_loss, 'total': total_loss}
         return loss
 
     def training_step(
@@ -397,33 +415,33 @@ class MultiGainPacMan(Task):
     ) -> torch.Tensor:
 
         x, y = batch
-        positions = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T, positions.squeeze())
-        self.log("train_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
-        return loss
+        positions, energies = self.forward(x.T, y.T)
+        loss = self.compute_loss(y.T, positions.squeeze(), energies)
+        self.log("train_loss", loss['total'], prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+        return loss['total']
 
     def validation_step(
         self, batch: torch.Tensor, batch_idx
     ) -> torch.Tensor:
 
         x, y = batch
-        positions = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T, positions.squeeze())
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('hp/metric_1', loss, sync_dist=True)
-        return loss
+        positions, energies = self.forward(x.T, y.T)
+        loss = self.compute_loss(y.T, positions.squeeze(), energies)
+        self.log("val_loss", loss['total'], prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+        self.log('hp/metric_1', loss['trajectory'], sync_dist=True)
+        return loss['total']
 
     def test_step(
         self, batch: torch.Tensor, batch_idx
     ) -> torch.Tensor:
 
         x, y = batch
-        positions = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T.squeeze(), positions.squeeze())
-        self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('hp/metric_2', loss, sync_dist=True)
-        self.log('hp_metric', loss, sync_dist=True)
-        return loss
+        positions, energies = self.forward(x.T, y.T)
+        loss = self.compute_loss(y.T.squeeze(), positions.squeeze(), energies)
+        self.log("test_loss", loss['total'], prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+        self.log('hp/metric_2', loss['trajectory'], sync_dist=True)
+        self.log('hp_metric', loss['trajectory'], sync_dist=True)
+        return loss['total']
 
 
 def set_results_path(task_name: str):
