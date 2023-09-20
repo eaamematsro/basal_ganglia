@@ -45,10 +45,10 @@ class SineDataset(Dataset):
 
 class PacmanDataset(Dataset):
     def __init__(self, trial_duration: int = 500, sigma: float = 25, n_samples: int = 100,
-                 gains: Sequence = None, viscosity: Sequence = None, polarity: Sequence = None):
+                 masses: Sequence = None, viscosity: Sequence = None, polarity: Sequence = None):
         super(PacmanDataset, self).__init__()
-        if gains is None:
-            gains = (0.5, 1, 1.5)
+        if masses is None:
+            masses = (0.5, 1, 1.5)
 
         if viscosity is None:
             viscosity = (0, 0.05, .1)
@@ -60,12 +60,12 @@ class PacmanDataset(Dataset):
         self.kernel = self.exponentiated_quadratic(xs, xs, sigma=sigma)
         targets = self.sample_gaussian_process(n_samples=n_samples)
 
-        n_entries = n_samples * len(polarity) * len(viscosity) * len(gains)
+        n_entries = n_samples * len(polarity) * len(viscosity) * len(masses)
         contexts = np.zeros((n_entries, 3))
         out_targets = np.zeros((n_entries, trial_duration))
 
-        for idx, (gain, visc, polar, trajectory) in enumerate(product(gains, viscosity, polarity, targets)):
-            contexts[idx] = np.asarray([gain, visc, polar])
+        for idx, (mass, visc, polar, trajectory) in enumerate(product(masses, viscosity, polarity, targets)):
+            contexts[idx] = np.asarray([mass, visc, polar])
             out_targets[idx] = trajectory
 
         self.x = torchify(contexts).T
