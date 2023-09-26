@@ -196,7 +196,7 @@ class MLP(Module):
                  noise_model: Optional[nn.Module] = None):
         super(MLP, self).__init__()
         if layer_sizes is None or not (type(layer_sizes) == tuple):
-            layer_sizes = (100, 50,)
+            layer_sizes = (25, 15, 10,)
 
         if non_linearity is None:
             non_linearity = nn.Softplus()

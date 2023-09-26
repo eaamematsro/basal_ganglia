@@ -372,7 +372,8 @@ class MultiGainPacMan(Task):
         self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
         return self.optimizer
 
-    def forward(self, contexts: torch.Tensor, targets: torch.Tensor) -> Any:
+    def forward(self, contexts: torch.Tensor, targets: torch.Tensor,
+                max_pos: float = 10) -> Any:
         ""
         if contexts.ndim == 1:
             contexts = contexts[:, None]
@@ -387,13 +388,13 @@ class MultiGainPacMan(Task):
         [energies.update({key: None}) for key in self.penalize_activity]
 
         for ti in range(self.duration):
-            rnn_input = {'displacement': torch.clip(
-                (targets[ti - 1] - position_store[ti - 1].squeeze()), -5, 5)[:, None]}
+            rnn_input = {'displacement': (
+                (targets[ti - 1] - position_store[ti - 1].squeeze()))[:, None]}
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
             acceleration = ((outputs['r_act'] @ self.network.Wout) * (contexts[2])[:, None] -
                             velocity * contexts[1][:, None]) / (contexts[0][:, None])
             velocity = velocity + self.dt * acceleration
-            position_store[ti] = position + self.dt * velocity
+            position_store[ti] = torch.clip(position + self.dt * velocity, -max_pos, max_pos)
             for key in self.penalize_activity:
                 if energies[key] is None:
                     energies[key] = torch.zeros((self.duration, *outputs[key].shape), device=outputs[key].device)

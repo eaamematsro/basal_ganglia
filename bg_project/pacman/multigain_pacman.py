@@ -26,7 +26,7 @@ def split_dataset(dataset, fractions: Sequence = (.6, .2, .2)):
 if __name__ == '__main__':
     test_networks = ["RNNStaticBG", "RNNMultiContextInput"]
 
-    weight_penalties = np.logspace(-5, 1)
+    weight_penalties = np.logspace(-5, -1)
     torch.set_float32_matmul_precision('medium')
 
     for weight_penalty in weight_penalties:
@@ -56,7 +56,7 @@ if __name__ == '__main__':
             for nbg in [10, 25, 50]:
                 thalamic_model = MultiGainPacMan(
                     network=network, nbg=nbg, bg_input_size=3, apply_energy_penalty=('r_act', 'bg_act'),
-                    output_weight_penalty=0)
+                    output_weight_penalty=0, energy_penalty=0)
 
                 # Transfer and freeze weights from trained network's rnn module
                 transfer_network_weights(thalamic_model.network, simple_model.network,
