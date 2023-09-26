@@ -5,7 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="068be01d-770f-4bcd-8be5-cef8b961c4d1" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/bg_project/datasets/loaders.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/datasets/loaders.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/workflows/code-quality.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/code-quality.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -116,7 +116,7 @@
       <workItem from="1691515349665" duration="438000" />
       <workItem from="1693311714843" duration="6040000" />
       <workItem from="1693329731050" duration="1672000" />
-      <workItem from="1695388717064" duration="8225000" />
+      <workItem from="1695388717064" duration="8758000" />
     </task>
     <servers />
   </component>
