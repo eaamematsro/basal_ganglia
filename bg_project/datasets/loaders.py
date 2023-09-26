@@ -102,6 +102,7 @@ class PacmanDataset(Dataset):
         heights: Torch tensor of target heights.
         samples: Number of trajectories in dataset.
     """
+
     def __init__(
         self,
         trial_duration: int = 500,
