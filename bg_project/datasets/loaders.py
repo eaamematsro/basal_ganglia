@@ -12,12 +12,12 @@ Examples:
     first_data = data_set[0]
 """
 import pdb
-import matplotlib.pyplot as plt # type: ignore
-import numpy as np # type: ignore
-from torch.utils.data import Dataset, DataLoader # type: ignore
+import matplotlib.pyplot as plt
+import numpy as np
+from torch.utils.data import Dataset, DataLoader
 from model_factory.factory_utils import torchify
-from scipy.ndimage import gaussian_filter1d # type: ignore
-from scipy.spatial.distance import cdist # type: ignore
+from scipy.ndimage import gaussian_filter1d
+from scipy.spatial.distance import cdist
 from typing import Sequence, Optional
 from itertools import product
 
