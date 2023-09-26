@@ -10,5 +10,5 @@ out_1 = r @ U @ torch.diag(rthal[0]) @ V
 #
 # J2 = torch.einsum('ij, kj, jl -> kil', U, rthal, V)
 # out_2 = torch.einsum('kil, ki -> kl', J2, r)
-out_3 = torch.einsum('ij, kj, jl, ki -> kl', U, rthal, V, r)
+out_3 = torch.einsum("ij, kj, jl, ki -> kl", U, rthal, V, r)
 torch.isclose(out_1, out_3).all()

@@ -17,8 +17,7 @@ from pathlib import Path
 
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
-    def __init__(self, network: str,
-                 **kwargs):
+    def __init__(self, network: str, **kwargs):
         super(Task, self).__init__()
         self.network = NETWORKS[network](**kwargs)
         self.type = network
@@ -36,22 +35,28 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
 
 
 class GenerateSine(Task):
-    def __init__(self, network: Optional[str] = "RNNFeedbackBG",
-                 nneurons: int = 150, duration: int = 500,
-                 nbg: int = 10,
+    def __init__(
+        self,
+        network: Optional[str] = "RNNFeedbackBG",
+        nneurons: int = 150,
+        duration: int = 500,
+        nbg: int = 10,
+        **kwargs,
+    ):
 
-                 **kwargs):
+        kwargs["ncontext"] = 1
+        rnn_input_source = {"go": (1, True)}
 
-        kwargs['ncontext'] = 1
-        rnn_input_source = {
-            'go': (1, True)
-        }
+        super(GenerateSine, self).__init__(
+            network=network,
+            nneurons=nneurons,
+            nbg=nbg,
+            input_sources=rnn_input_source,
+            include_bias=False,
+            **kwargs,
+        )
 
-        super(GenerateSine, self).__init__(network=network, nneurons=nneurons, nbg=nbg,
-                                           input_sources=rnn_input_source, include_bias=False,
-                                           **kwargs)
-
-        self.network.params.update({'task': "SineGeneration"})
+        self.network.params.update({"task": "SineGeneration"})
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
@@ -73,10 +78,18 @@ class GenerateSine(Task):
         self.configure_optimizers()
         self.results_path = set_results_path(type(self).__name__)
 
-    def create_gos_and_targets(self, n_unique_pulses: int = 10, pulse_width: int = 10,
-                               frequency: float = 1, delay: int = 0, amplitude: int = 1):
+    def create_gos_and_targets(
+        self,
+        n_unique_pulses: int = 10,
+        pulse_width: int = 10,
+        frequency: float = 1,
+        delay: int = 0,
+        amplitude: int = 1,
+    ):
         total_time = self.duration
-        pulse_times = np.linspace(total_time * 1 / 10, total_time * 4 / 10, n_unique_pulses).astype(int)
+        pulse_times = np.linspace(
+            total_time * 1 / 10, total_time * 4 / 10, n_unique_pulses
+        ).astype(int)
         pulses = np.zeros((total_time, n_unique_pulses))
         fixation = np.ones((total_time, n_unique_pulses))
         targets = np.zeros((total_time, n_unique_pulses))
@@ -84,12 +97,17 @@ class GenerateSine(Task):
         period = int(2 * np.pi / self.dt)
 
         for idx, pulse_start in enumerate(pulse_times):
-            pulses[pulse_start: pulse_start + pulse_width, idx] = 1
+            pulses[pulse_start : pulse_start + pulse_width, idx] = 1
             fixation[pulse_start:, idx] = 0
-            targets[:, idx] = amplitude * np.sin((times - pulse_start - delay) * frequency * self.dt)
-            targets[:(pulse_start + delay), idx] = 0
-            targets[(pulse_start + delay + 3 * period):, idx] = 0
-            pulses[(pulse_start + 3 * period): (pulse_start + pulse_width + 3 * period), idx] = -1
+            targets[:, idx] = amplitude * np.sin(
+                (times - pulse_start - delay) * frequency * self.dt
+            )
+            targets[: (pulse_start + delay), idx] = 0
+            targets[(pulse_start + delay + 3 * period) :, idx] = 0
+            pulses[
+                (pulse_start + 3 * period) : (pulse_start + pulse_width + 3 * period),
+                idx,
+            ] = -1
 
         pulses = torchify(gaussian_filter1d(pulses, sigma=1, axis=0))
         fixation = torchify(gaussian_filter1d(fixation, sigma=1, axis=0))
@@ -102,21 +120,26 @@ class GenerateSine(Task):
         self.Targets = targets
         return pulses
 
-    def forward(self, go_cues: torch.Tensor,):
+    def forward(
+        self,
+        go_cues: torch.Tensor,
+    ):
 
         if go_cues.ndim == 1:
             go_cues = go_cues[:, None]
         batch_size = go_cues.shape[1]
         # pdb.set_trace()
-        position_store = torch.zeros(self.duration, batch_size, 1, device=self.network.Wout.device)
+        position_store = torch.zeros(
+            self.duration, batch_size, 1, device=self.network.Wout.device
+        )
         context_input = torch.zeros((batch_size, 1))
-        bg_inputs = {'context': context_input}
+        bg_inputs = {"context": context_input}
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):
-            rnn_input = {'go': go_cues[ti][:, None]}
+            rnn_input = {"go": go_cues[ti][:, None]}
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
-            position_store[ti] = outputs['r_act'] @ self.network.Wout
+            position_store[ti] = outputs["r_act"] @ self.network.Wout
 
         return position_store
 
@@ -126,9 +149,9 @@ class GenerateSine(Task):
         with torch.no_grad():
             position_store = self.forward(go_cues)
         ax.cla()
-        ax.plot(self.Targets[:, batch], label='Target')
-        ax.plot(go_cues.cpu(), label='Go Cue')
-        ax.plot(position_store[:, 0].detach().cpu(), label='Actual')
+        ax.plot(self.Targets[:, batch], label="Target")
+        ax.plot(go_cues.cpu(), label="Go Cue")
+        ax.plot(position_store[:, 0].detach().cpu(), label="Actual")
         plt.legend()
         return position_store
 
@@ -138,9 +161,7 @@ class GenerateSine(Task):
         loss = ((Targets - position) ** 2).mean()
         return loss
 
-    def compute_loss(
-            self, batch
-    ):
+    def compute_loss(self, batch):
 
         if isinstance(batch, dict):
             batch = batch["X"]
@@ -161,11 +182,16 @@ class GenerateSine(Task):
 
     def _log_loss(self, result_dict, stage: str) -> None:
         for k, v in result_dict.items():
-            self.log(f"{stage}_{k}", v, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+            self.log(
+                f"{stage}_{k}",
+                v,
+                prog_bar=True,
+                on_epoch=True,
+                on_step=False,
+                sync_dist=True,
+            )
 
-    def training_step(
-        self, batch: torch.Tensor
-    ) -> torch.Tensor:
+    def training_step(self, batch: torch.Tensor) -> torch.Tensor:
         """
         Update and log beta, compute losses, and log them
         """
@@ -177,8 +203,13 @@ class GenerateSine(Task):
 
         return result_dict["total"]
 
-    def training_loop(self, data_loader, niterations: int = 500,
-                      plot_freq: int = 5, clip_grad: bool = True):
+    def training_loop(
+        self,
+        data_loader,
+        niterations: int = 500,
+        plot_freq: int = 5,
+        clip_grad: bool = True,
+    ):
         fig_loss, ax_loss = plt.subplots(1, 2, figsize=(16, 8))
         for iteration in range(niterations):
             for idx, (x, y) in enumerate(data_loader):
@@ -190,40 +221,45 @@ class GenerateSine(Task):
                 loss.backward()
                 self.Loss.append(loss.item())
                 if clip_grad:
-                    nn.utils.clip_grad_norm_(self.network.parameters(), 1, norm_type=2.0,
-                                             error_if_nonfinite=False,)
+                    nn.utils.clip_grad_norm_(
+                        self.network.parameters(),
+                        1,
+                        norm_type=2.0,
+                        error_if_nonfinite=False,
+                    )
                 self.optimizer.step()
 
             if (iteration % plot_freq) == 0:
                 self.eval_network(ax=ax_loss[1])
                 ax_loss[0].cla()
                 ax_loss[0].plot(self.Loss)
-                ax_loss[0].set_yscale('log')
-            plt.pause(.01)
+                ax_loss[0].set_yscale("log")
+            plt.pause(0.01)
             # pdb.set_trace()
 
-    def plot_different_gains(self, batch_size: int = 50,
-                             cmap: mcolors.Colormap = None):
+    def plot_different_gains(self, batch_size: int = 50, cmap: mcolors.Colormap = None):
         if cmap is None:
             cmap = plt.cm.inferno
         context_input = torch.linspace(-1, 1, batch_size)[:, None]
         position_store = torch.zeros(self.duration, batch_size, 1)
-        bg_inputs = {'context': context_input}
+        bg_inputs = {"context": context_input}
         self.network.rnn.reset_state(batch_size)
         go_cues = self.Pulses[:, np.zeros(batch_size).astype(int)]
-        normalization = mcolors.Normalize(vmin=0, vmax=batch_size-1)
+        normalization = mcolors.Normalize(vmin=0, vmax=batch_size - 1)
         with torch.no_grad():
             for ti in range(self.duration):
-                rnn_input = {'go': go_cues[ti][:, None]}
-                outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, noise_scale=0)
-                position_store[ti] = outputs['r_act'] @ self.network.Wout
+                rnn_input = {"go": go_cues[ti][:, None]}
+                outputs = self.network(
+                    bg_inputs=bg_inputs, rnn_inputs=rnn_input, noise_scale=0
+                )
+                position_store[ti] = outputs["r_act"] @ self.network.Wout
         fig, ax = plt.subplots()
-        ax.plot(self.Targets[:, 0], label='Target', color='black', ls='--')
-        ax.plot(go_cues[:, 0], label='Go Cue', color='red')
+        ax.plot(self.Targets[:, 0], label="Target", color="black", ls="--")
+        ax.plot(go_cues[:, 0], label="Go Cue", color="red")
         for batch in range(batch_size):
             ax.plot(position_store[:, batch], color=cmap(normalization(batch)))
         ax.legend()
-        file_name = self.results_path / 'gain_interpolation'
+        file_name = self.results_path / "gain_interpolation"
         fig.savefig(file_name)
         plt.show()
 
@@ -231,20 +267,28 @@ class GenerateSine(Task):
 
 
 class GenerateSinePL(Task):
-    def __init__(self, network: Optional[str] = "RNNFeedbackBG",
-                 nneurons: int = 150, duration: int = 500,
-                 nbg: int = 10, **kwargs):
+    def __init__(
+        self,
+        network: Optional[str] = "RNNFeedbackBG",
+        nneurons: int = 150,
+        duration: int = 500,
+        nbg: int = 10,
+        **kwargs,
+    ):
 
-        kwargs['ncontext'] = 1
-        rnn_input_source = {
-            'go': (1, True)
-        }
+        kwargs["ncontext"] = 1
+        rnn_input_source = {"go": (1, True)}
 
-        super(GenerateSinePL, self).__init__(network=network, nneurons=nneurons, nbg=nbg,
-                                           input_sources=rnn_input_source, include_bias=False,
-                                           **kwargs)
+        super(GenerateSinePL, self).__init__(
+            network=network,
+            nneurons=nneurons,
+            nbg=nbg,
+            input_sources=rnn_input_source,
+            include_bias=False,
+            **kwargs,
+        )
         self.save_hyperparameters()
-        self.network.params.update({'task': "SineGeneration"})
+        self.network.params.update({"task": "SineGeneration"})
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
@@ -265,21 +309,26 @@ class GenerateSinePL(Task):
         self.configure_optimizers()
         self.results_path = set_results_path(type(self).__name__)[-1]
 
-    def forward(self, go_cues: torch.Tensor,):
+    def forward(
+        self,
+        go_cues: torch.Tensor,
+    ):
 
         if go_cues.ndim == 1:
             go_cues = go_cues[:, None]
         batch_size = go_cues.shape[1]
         # pdb.set_trace()
-        position_store = torch.zeros(self.duration, batch_size, 1, device=self.network.Wout.device)
+        position_store = torch.zeros(
+            self.duration, batch_size, 1, device=self.network.Wout.device
+        )
         context_input = torch.ones((batch_size, 1), device=self.network.Wout.device)
-        bg_inputs = {'context': context_input}
+        bg_inputs = {"context": context_input}
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):
-            rnn_input = {'go': go_cues[ti][:, None]}
+            rnn_input = {"go": go_cues[ti][:, None]}
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
-            position_store[ti] = outputs['r_act'] @ self.network.Wout
+            position_store[ti] = outputs["r_act"] @ self.network.Wout
 
         return position_store
 
@@ -290,71 +339,103 @@ class GenerateSinePL(Task):
 
     def _log_loss(self, result_dict, stage: str) -> None:
         for k, v in result_dict.items():
-            self.log(f"{stage}_{k}", v, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+            self.log(
+                f"{stage}_{k}",
+                v,
+                prog_bar=True,
+                on_epoch=True,
+                on_step=False,
+                sync_dist=True,
+            )
 
     def compute_loss(self, **kwargs):
         raise NotImplementedError
 
-    def training_step(
-        self, batch: torch.Tensor,
-            batch_idx
-    ) -> torch.Tensor:
+    def training_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
         """
         Update and log beta, compute losses, and log them
         """
         x, y = batch
         positions = self.forward(x.T)
         loss = nn.functional.mse_loss(positions.squeeze(), y.T)
-        self.log("train_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+        self.log(
+            "train_loss",
+            loss,
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
         return loss
 
-    def validation_step(
-        self, batch: torch.Tensor, batch_idx
-    ) -> torch.Tensor:
+    def validation_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
         """
         Update and log beta, compute losses, and log them
         """
         x, y = batch
         positions = self.forward(x.T)
         loss = nn.functional.mse_loss(positions.squeeze(), y.T)
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('hp/metric_1', loss, sync_dist=True)
+        self.log(
+            "val_loss",
+            loss,
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        self.log("hp/metric_1", loss, sync_dist=True)
         return loss
 
-    def test_step(
-        self, batch: torch.Tensor, batch_idx
-    ) -> torch.Tensor:
+    def test_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
         """
         Update and log beta, compute losses, and log them
         """
         x, y = batch
         positions = self.forward(x.T)
         loss = nn.functional.mse_loss(positions.squeeze(), y.T)
-        self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('hp/metric_2', loss, sync_dist=True)
-        self.log('hp_metric', loss, sync_dist=True)
+        self.log(
+            "test_loss",
+            loss,
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        self.log("hp/metric_2", loss, sync_dist=True)
+        self.log("hp_metric", loss, sync_dist=True)
         return loss
 
 
 class MultiGainPacMan(Task):
-    def __init__(self, network: Optional[str] = "RNNFeedbackBG",
-                 nneurons: int = 150, duration: int = 500,
-                 nbg: int = 10, ncontext: int = 3, apply_energy_penalty: Optional[Tuple[str, ...]] = None,
-                 energy_penalty: float = 1e-3, output_weight_penalty: float = 1e-3,
-                 **kwargs):
+    def __init__(
+        self,
+        network: Optional[str] = "RNNFeedbackBG",
+        nneurons: int = 150,
+        duration: int = 500,
+        nbg: int = 10,
+        ncontext: int = 3,
+        apply_energy_penalty: Optional[Tuple[str, ...]] = None,
+        energy_penalty: float = 1e-3,
+        output_weight_penalty: float = 1e-3,
+        **kwargs,
+    ):
         if apply_energy_penalty is None:
             apply_energy_penalty = ()
 
-        kwargs['ncontext'] = ncontext
-        rnn_input_source = {
-            'displacement': (1, True)
-        }
+        kwargs["ncontext"] = ncontext
+        rnn_input_source = {"displacement": (1, True)}
 
-        super(MultiGainPacMan, self).__init__(network=network, nneurons=nneurons, nbg=nbg,
-                                              input_sources=rnn_input_source, include_bias=False, **kwargs)
+        super(MultiGainPacMan, self).__init__(
+            network=network,
+            nneurons=nneurons,
+            nbg=nbg,
+            input_sources=rnn_input_source,
+            include_bias=False,
+            **kwargs,
+        )
 
         self.save_hyperparameters()
-        self.network.params.update({'task': "MultiGainPacMan"})
+        self.network.params.update({"task": "MultiGainPacMan"})
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
@@ -372,80 +453,118 @@ class MultiGainPacMan(Task):
         self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
         return self.optimizer
 
-    def forward(self, contexts: torch.Tensor, targets: torch.Tensor,
-                max_pos: float = 10) -> Any:
-        ""
+    def forward(
+        self, contexts: torch.Tensor, targets: torch.Tensor, max_pos: float = 10
+    ) -> Any:
+        """"""
         if contexts.ndim == 1:
             contexts = contexts[:, None]
         batch_size = contexts.shape[1]
 
-        position_store = torch.zeros(self.duration, batch_size, 1, device=self.network.Wout.device)
+        position_store = torch.zeros(
+            self.duration, batch_size, 1, device=self.network.Wout.device
+        )
         position = torch.zeros(batch_size, 1, device=self.network.Wout.device)
         velocity = torch.zeros(batch_size, 1, device=self.network.Wout.device)
-        bg_inputs = {'context': contexts.T}
+        bg_inputs = {"context": contexts.T}
         self.network.rnn.reset_state(batch_size)
         energies = {}
         [energies.update({key: None}) for key in self.penalize_activity]
 
         for ti in range(self.duration):
-            rnn_input = {'displacement': (
-                (targets[ti - 1] - position_store[ti - 1].squeeze()))[:, None]}
+            rnn_input = {
+                "displacement": ((targets[ti - 1] - position_store[ti - 1].squeeze()))[
+                    :, None
+                ]
+            }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
-            acceleration = ((outputs['r_act'] @ self.network.Wout) * (contexts[2])[:, None] -
-                            velocity * contexts[1][:, None]) / (contexts[0][:, None])
+            acceleration = (
+                (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
+                - velocity * contexts[1][:, None]
+            ) / (contexts[0][:, None])
             velocity = velocity + self.dt * acceleration
-            position_store[ti] = torch.clip(position + self.dt * velocity, -max_pos, max_pos)
+            position_store[ti] = torch.clip(
+                position + self.dt * velocity, -max_pos, max_pos
+            )
             for key in self.penalize_activity:
                 if energies[key] is None:
-                    energies[key] = torch.zeros((self.duration, *outputs[key].shape), device=outputs[key].device)
+                    energies[key] = torch.zeros(
+                        (self.duration, *outputs[key].shape), device=outputs[key].device
+                    )
                 energies[key][ti] = outputs[key]
 
         return position_store, energies
 
-    def compute_loss(self, target: torch.Tensor, model_output: torch.Tensor, network_energy: dict) -> dict:
+    def compute_loss(
+        self, target: torch.Tensor, model_output: torch.Tensor, network_energy: dict
+    ) -> dict:
         trajectory_loss = nn.functional.mse_loss(model_output, target)
-        output_weight_loss = self.output_weight_penalty * torch.linalg.norm(self.network.Wout)
+        output_weight_loss = self.output_weight_penalty * torch.linalg.norm(
+            self.network.Wout
+        )
         energy_loss = 0
         for key in self.penalize_activity:
-            energy_loss = energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
-        total_loss = trajectory_loss + self.energy_penalty * energy_loss + output_weight_loss
-        loss = {'energy': self.energy_penalty * energy_loss, 'trajectory': trajectory_loss,
-                'output_weight': output_weight_loss, 'total': total_loss}
+            energy_loss = (
+                energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
+            )
+        total_loss = (
+            trajectory_loss + self.energy_penalty * energy_loss + output_weight_loss
+        )
+        loss = {
+            "energy": self.energy_penalty * energy_loss,
+            "trajectory": trajectory_loss,
+            "output_weight": output_weight_loss,
+            "total": total_loss,
+        }
         return loss
 
-    def training_step(
-        self, batch: torch.Tensor,
-            batch_idx
-    ) -> torch.Tensor:
+    def training_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
         positions, energies = self.forward(x.T, y.T)
         loss = self.compute_loss(y.T, positions.squeeze(), energies)
-        self.log("train_loss", loss['total'], prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
-        return loss['total']
+        self.log(
+            "train_loss",
+            loss["total"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        return loss["total"]
 
-    def validation_step(
-        self, batch: torch.Tensor, batch_idx
-    ) -> torch.Tensor:
+    def validation_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
         positions, energies = self.forward(x.T, y.T)
         loss = self.compute_loss(y.T, positions.squeeze(), energies)
-        self.log("val_loss", loss['total'], prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('hp/metric_1', loss['trajectory'], sync_dist=True)
-        return loss['total']
+        self.log(
+            "val_loss",
+            loss["total"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        self.log("hp/metric_1", loss["trajectory"], sync_dist=True)
+        return loss["total"]
 
-    def test_step(
-        self, batch: torch.Tensor, batch_idx
-    ) -> torch.Tensor:
+    def test_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
         positions, energies = self.forward(x.T, y.T)
         loss = self.compute_loss(y.T.squeeze(), positions.squeeze(), energies)
-        self.log("test_loss", loss['total'], prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('hp/metric_2', loss['trajectory'], sync_dist=True)
-        self.log('hp_metric', loss['trajectory'], sync_dist=True)
-        return loss['total']
+        self.log(
+            "test_loss",
+            loss["total"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        self.log("hp/metric_2", loss["trajectory"], sync_dist=True)
+        self.log("hp_metric", loss["trajectory"], sync_dist=True)
+        return loss["total"]
 
 
 def set_results_path(task_name: str):
@@ -457,8 +576,12 @@ def set_results_path(task_name: str):
     date_str = date.today().strftime("%Y-%m-%d")
     date_save_path = task_path / date_str
     date_save_path.mkdir(exist_ok=True)
-    reg_exp = '_'.join(['Trial', '\d+'])
-    files = [x for x in date_save_path.iterdir() if x.is_dir() and re.search(reg_exp, str(x.stem))]
+    reg_exp = "_".join(["Trial", "\d+"])
+    files = [
+        x
+        for x in date_save_path.iterdir()
+        if x.is_dir() and re.search(reg_exp, str(x.stem))
+    ]
     folder_path = date_save_path / f"Trial_{len(files)}"
     folder_path.mkdir(exist_ok=True)
     return task_path, date_save_path, folder_path

@@ -22,13 +22,17 @@ class Module(nn.Module, metaclass=abc.ABCMeta):
             param.requires_grad = True
 
 
-
 class RNN(Module):
-
-    def __init__(self, nneurons: int = 100, non_linearity: Optional[nn.Module] = None,
-                 g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                 dt: float = 5e-2, tau: float = .15,
-                 noise_model: Optional[nn.Module] = None):
+    def __init__(
+        self,
+        nneurons: int = 100,
+        non_linearity: Optional[nn.Module] = None,
+        g0: float = 1.2,
+        input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+        dt: float = 5e-2,
+        tau: float = 0.15,
+        noise_model: Optional[nn.Module] = None,
+    ):
         """
         Base class for recurrent neural networks
 
@@ -53,7 +57,6 @@ class RNN(Module):
         """
         super(RNN, self).__init__()
 
-
         if noise_model is None:
             noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
 
@@ -73,18 +76,24 @@ class RNN(Module):
                 else:
                     self.I[input_name] = input_tens
 
-        J_mat = (g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons))
+        J_mat = g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons)
         J_mat = torchify(J_mat)
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
-        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons)))
+        self.B = nn.Parameter(
+            torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons))
+        )
         self.noise_model = noise_model
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
 
-    def forward(self, inputs: Dict[str, torch.Tensor], noise_scale: float = .1,
-                validate_inputs: bool = False):
+    def forward(
+        self,
+        inputs: Dict[str, torch.Tensor],
+        noise_scale: float = 0.1,
+        validate_inputs: bool = False,
+    ):
         if validate_inputs:
             input_names = set(list(inputs.keys()))
             assert input_names.intersection(self.input_names) == input_names
@@ -104,19 +113,27 @@ class RNN(Module):
 
     def reset_state(self, batch_size: int = 10):
 
-        self.x = torch.randn((batch_size, self.J.shape[0]), device=self.J.device) / np.sqrt(self.J.shape[0])
+        self.x = torch.randn(
+            (batch_size, self.J.shape[0]), device=self.J.device
+        ) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
 
 class ThalamicRNN(Module):
-    """ Base class for recurrent neural networks"""
+    """Base class for recurrent neural networks"""
 
-    def __init__(self, nneurons: int = 100, nbg: int = 20, non_linearity: Optional[nn.Module] = None,
-                 g0: float = 1.2, input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
-                dt: float = 5e-2, tau: float = .15,
-                 noise_model: Optional[nn.Module] = None):
+    def __init__(
+        self,
+        nneurons: int = 100,
+        nbg: int = 20,
+        non_linearity: Optional[nn.Module] = None,
+        g0: float = 1.2,
+        input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+        dt: float = 5e-2,
+        tau: float = 0.15,
+        noise_model: Optional[nn.Module] = None,
+    ):
         super(ThalamicRNN, self).__init__()
-
 
         if non_linearity is None:
             non_linearity = nn.Softplus()
@@ -137,13 +154,19 @@ class ThalamicRNN(Module):
                 else:
                     self.I[input_name] = input_tens
 
-        J_mat = (g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons))
+        J_mat = g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons)
         J_mat = torchify(J_mat)
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
-        self.U = nn.Parameter(torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)), requires_grad=False)
-        self.V = nn.Parameter(torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)), requires_grad=False)
+        self.U = nn.Parameter(
+            torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
+            requires_grad=False,
+        )
+        self.V = nn.Parameter(
+            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
+            requires_grad=False,
+        )
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
@@ -154,14 +177,23 @@ class ThalamicRNN(Module):
         U, S, Vh = np.linalg.svd(J)
         bg_rank = self.U.shape[1]
 
-        self.U = torchify((np.sqrt(1 - g1 ** 2)) * U[:, :bg_rank] + g1 ** 2 *
-                          np.random.randn(J.shape[0], bg_rank) / np.sqrt(J.shape[0]))
+        self.U = torchify(
+            (np.sqrt(1 - g1**2)) * U[:, :bg_rank]
+            + g1**2 * np.random.randn(J.shape[0], bg_rank) / np.sqrt(J.shape[0])
+        )
 
-        self.V = torchify((np.sqrt(1 - g2 ** 2)) * Vh[:bg_rank] + g2 ** 2 *
-                          np.random.randn(bg_rank, J.shape[0]) / np.sqrt(J.shape[0]))
+        self.V = torchify(
+            (np.sqrt(1 - g2**2)) * Vh[:bg_rank]
+            + g2**2 * np.random.randn(bg_rank, J.shape[0]) / np.sqrt(J.shape[0])
+        )
 
-    def forward(self, r_thalamic, inputs: Optional[Dict[str, torch.Tensor]] = None, noise_scale: float = 0.1,
-                validate_inputs: bool = False):
+    def forward(
+        self,
+        r_thalamic,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+        noise_scale: float = 0.1,
+        validate_inputs: bool = False,
+    ):
         if inputs is None:
             inputs = {}
         if validate_inputs:
@@ -171,13 +203,14 @@ class ThalamicRNN(Module):
         for input_name, input_value in inputs.items():
             out += input_value @ self.I[input_name]
 
-        rec_input = torch.einsum('ij, kj, jl, ki -> kl',
-                                 self.U, r_thalamic, self.V, self.r)
-
+        rec_input = torch.einsum(
+            "ij, kj, jl, ki -> kl", self.U, r_thalamic, self.V, self.r
+        )
 
         x = self.x + self.dt / self.tau * (
-               self.noise_model(-self.x + self.r @ self.J +
-                                rec_input + self.B + out, noise_scale)
+            self.noise_model(
+                -self.x + self.r @ self.J + rec_input + self.B + out, noise_scale
+            )
         )
 
         r = self.nonlinearity(x)
@@ -186,31 +219,41 @@ class ThalamicRNN(Module):
         return self.x, self.r
 
     def reset_state(self, batch_size: int = 10):
-        self.x = torch.randn((batch_size, self.J.shape[0]), device=self.J.device) / np.sqrt(self.J.shape[0])
+        self.x = torch.randn(
+            (batch_size, self.J.shape[0]), device=self.J.device
+        ) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
 
 class MLP(Module):
-    def __init__(self, layer_sizes: Optional[Tuple[int, ...]] = None, non_linearity: Optional[nn.Module] = None,
-                 input_size: Optional[int] = 150, output_size: Optional[int] = 10, include_bias: bool = True,
-                 noise_model: Optional[nn.Module] = None):
+    def __init__(
+        self,
+        layer_sizes: Optional[Tuple[int, ...]] = None,
+        non_linearity: Optional[nn.Module] = None,
+        input_size: Optional[int] = 150,
+        output_size: Optional[int] = 10,
+        include_bias: bool = True,
+        noise_model: Optional[nn.Module] = None,
+    ):
         super(MLP, self).__init__()
         if layer_sizes is None or not (type(layer_sizes) == tuple):
-            layer_sizes = (25, 15, 10,)
+            layer_sizes = (
+                25,
+                15,
+                10,
+            )
 
         if non_linearity is None:
             non_linearity = nn.Softplus()
 
         if noise_model is None:
-            noise_model = GaussianNoise(sigma=.25)
+            noise_model = GaussianNoise(sigma=0.25)
 
         modules = []
         layer_sizes = layer_sizes + (output_size,)
         previous_size = input_size
         for size in layer_sizes:
-            modules.append(
-                nn.Linear(previous_size, size, bias=include_bias)
-            )
+            modules.append(nn.Linear(previous_size, size, bias=include_bias))
             modules.append(non_linearity)
             previous_size = size
 
@@ -219,7 +262,7 @@ class MLP(Module):
         self.mlp = nn.Sequential(*modules)
         self.noise_model = noise_model
 
-    def forward(self, inputs: torch.Tensor, noise_scale: float = .05):
+    def forward(self, inputs: torch.Tensor, noise_scale: float = 0.05):
         """
 
         :param inputs: [batch, inputs]
@@ -232,38 +275,60 @@ class MLP(Module):
         for m in modules:
             if isinstance(m, nn.Linear):
                 # nn.init.xavier_normal_(m.weight, gain=nn.init.calculate_gain('sigmoid'))
-                nn.init.normal_(m.weight, std=1/m.weight.shape[0])
+                nn.init.normal_(m.weight, std=1 / m.weight.shape[0])
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
 
 class MultiHeadMLP(Module):
-    def __init__(self, independent_layers: Optional[Dict[str, Tuple[Tuple[int, ...], int]]] = None,
-                 shared_layer_sizes: Optional[Tuple[int, ...]] = None,
-                 non_linearity: Optional[nn.Module] = None,
-                 input_size: Optional[int] = 150, output_size: Optional[int] = 10,
-                 include_bias: bool = True, noise_model: Optional[nn.Module] = None):
+    def __init__(
+        self,
+        independent_layers: Optional[Dict[str, Tuple[Tuple[int, ...], int]]] = None,
+        shared_layer_sizes: Optional[Tuple[int, ...]] = None,
+        non_linearity: Optional[nn.Module] = None,
+        input_size: Optional[int] = 150,
+        output_size: Optional[int] = 10,
+        include_bias: bool = True,
+        noise_model: Optional[nn.Module] = None,
+    ):
         super(MultiHeadMLP, self).__init__()
 
         if independent_layers is None:
             independent_layers = {
-                'input_1': ((100, 50), 10),
-                'input_2': ((100, 50), 10)
+                "input_1": ((100, 50), 10),
+                "input_2": ((100, 50), 10),
             }
 
-        assert len(independent_layers) > 1, 'There are less than one input heads. Consider using MLP instead.'
+        assert (
+            len(independent_layers) > 1
+        ), "There are less than one input heads. Consider using MLP instead."
         self.input_names = set(list(independent_layers.keys()))
         self.input_mlps = nn.ParameterDict({})
         for input_name, (input_sizes, layer_input) in independent_layers.items():
-            self.input_mlps[input_name] = MLP(layer_sizes=input_sizes, output_size=input_size,
-                                              input_size=layer_input, non_linearity=non_linearity,
-                                              include_bias=include_bias, noise_model=noise_model)
+            self.input_mlps[input_name] = MLP(
+                layer_sizes=input_sizes,
+                output_size=input_size,
+                input_size=layer_input,
+                non_linearity=non_linearity,
+                include_bias=include_bias,
+                noise_model=noise_model,
+            )
 
-        self.shared_mlp = MLP(layer_sizes=shared_layer_sizes, input_size=input_size,
-                              output_size=output_size, non_linearity=non_linearity,
-                              include_bias=include_bias, noise_model=noise_model)
+        self.shared_mlp = MLP(
+            layer_sizes=shared_layer_sizes,
+            input_size=input_size,
+            output_size=output_size,
+            non_linearity=non_linearity,
+            include_bias=include_bias,
+            noise_model=noise_model,
+        )
 
-    def forward(self, inputs: Dict[str, torch.Tensor], validate_inputs: bool = True, noise_scale: float = .05):
+    def forward(
+        self,
+        inputs: Dict[str, torch.Tensor],
+        validate_inputs: bool = True,
+        noise_scale: float = 0.05,
+    ):
         """
 
         :param inputs: Dict of Inputs [batch, inputs]
@@ -282,16 +347,19 @@ class MultiHeadMLP(Module):
         return y
 
 
-def transfer_network_weights(target_model: Module, source: Module,
-                             freeze: bool = False)\
-        -> Module:
+def transfer_network_weights(
+    target_model: Module, source: Module, freeze: bool = False
+) -> Module:
     source_state_dict = source.state_dict()
     target_state_dict = target_model.state_dict()
 
     source_keys = list(source_state_dict.keys())
 
-    [target_state_dict.update({key: source_state_dict[key]})
-     for key in target_state_dict.keys() if key in source_keys]
+    [
+        target_state_dict.update({key: source_state_dict[key]})
+        for key in target_state_dict.keys()
+        if key in source_keys
+    ]
 
     target_model.load_state_dict(target_state_dict)
     source_names = [name for name, _ in source.named_parameters()]
