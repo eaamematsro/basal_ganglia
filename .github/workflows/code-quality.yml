@@ -6,14 +6,18 @@ jobs:
     runs-on: ubuntu-latest
     name: Checks
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # OR "2" -> To retrieve the preceding commit.
     - uses: actions/setup-python@v2
       with:
         python-version: 3.8
+    - name: Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v39
     - run: pip install --upgrade pip
-    - run: pip install -r requirements.txt
     - run: pip install "black<23" pylint==v3.0.0a3 mypy==v0.902 pydocstyle
-    - run: black --diff --check $(git diff --name-only '*.py')
+    - run: black --diff --check $({steps.changed-files.outputs.all_changed_files} '*.py')
     - run: pydocstyle $(git diff --name-only '*.py')
       if: always()
     - run: mypy --strict $(git diff --name-only '*.py')

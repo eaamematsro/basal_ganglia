@@ -148,7 +148,7 @@ class PacmanDataset(Dataset):
 
         self.contexts: torch.Tensor = torchify(contexts).T
         self.heights: torch.Tensor = torchify(out_targets).T
-        self.samples = n_entries 
+        self.samples = n_entries
 
     def __getitem__(self, item):
         """
