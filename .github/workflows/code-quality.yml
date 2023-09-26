@@ -17,10 +17,10 @@ jobs:
       uses: tj-actions/changed-files@v39
     - run: pip install --upgrade pip
     - run: pip install "black<23" pylint==v3.0.0a3 mypy==v0.902 pydocstyle
-    - run: black --diff --check $(${steps.changed-files.outputs.all_changed_files} '*.py')
-    - run: pydocstyle $(git diff --name-only '*.py')
+    - run: black --diff --check $(git ls-files '*.py')
+    - run: pydocstyle $(git ls-files'*.py')
       if: always()
-    - run: mypy --strict $(git diff --name-only '*.py')
+    - run: mypy --strict $(git ls-files '*.py')
       if: always()
-    - run: pylint `git diff --name-only --diff-filter=d HEAD^ | grep -E '\.py$' | tr '\n' ' '`
+    - run: pylint $(git ls-files '*.py')
       if: always()
