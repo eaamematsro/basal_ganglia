@@ -15,7 +15,8 @@ jobs:
     - run: pip install "black<23" pylint==v3.0.0a3 mypy==v0.902 pydocstyle
     - run: black --diff --check $(git ls-files '*.py')
     - run: pydocstyle $(git ls-files '*.py')
-      continue-on-error: true
+      if: always()
     - run: mypy --strict $(git ls-files '*.py')
-      continue-on-error: true
+      if: always()
     - run: pylint $(git ls-files '*.py')
+      if: always()
