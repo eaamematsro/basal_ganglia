@@ -17,7 +17,7 @@ jobs:
       uses: tj-actions/changed-files@v39
     - run: pip install --upgrade pip
     - run: pip install "black<23" pylint==v3.0.0a3 mypy==v0.902 pydocstyle
-    - run: black --diff --check $($steps.changed-files.outputs.all_changed_files '*.py')
+    - run: black --diff --check $(${steps.changed-files.outputs.all_changed_files} '*.py')
     - run: pydocstyle $(git diff --name-only '*.py')
       if: always()
     - run: mypy --strict $(git diff --name-only '*.py')
