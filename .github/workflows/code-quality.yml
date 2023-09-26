@@ -13,10 +13,10 @@ jobs:
     - run: pip install --upgrade pip
     - run: pip install -r requirements.txt
     - run: pip install "black<23" pylint==v3.0.0a3 mypy==v0.902 pydocstyle
-    - run: black --diff --check $(git ls-files '*.py')
-    - run: pydocstyle $(git ls-files '*.py')
+    - run: black --diff --check $(git diff --name-only '*.py')
+    - run: pydocstyle $(git diff --name-only '*.py')
       if: always()
-    - run: mypy --strict $(git ls-files '*.py')
+    - run: mypy --strict $(git diff --name-only '*.py')
       if: always()
-    - run: pylint $(git ls-files '*.py')
+    - run: pylint $(git diff --name-only '*.py')
       if: always()

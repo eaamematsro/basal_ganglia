@@ -1,3 +1,16 @@
+"""This module contains classes corresponding to all the tasks that networks will be trained to perform.
+
+The classes contained in this model all generate torch datasets that can be used by a torch data
+loader to sample training data more efficiently.
+
+Returns:
+    SineDataset:
+    PacmanDataset:
+
+Examples:
+    data_set = PacmanDataset()
+    first_data = data_set[0]
+"""
 import pdb
 import matplotlib.pyplot as plt
 import numpy as np
@@ -5,11 +18,19 @@ from torch.utils.data import Dataset, DataLoader
 from model_factory.factory_utils import torchify
 from scipy.ndimage import gaussian_filter1d
 from scipy.spatial.distance import cdist
-from typing import Sequence
+from typing import Sequence, Optional
 from itertools import product
 
 
 class SineDataset(Dataset):
+    """Class for constructing sine generation dataset.
+
+
+    Attributes:
+        pulses: Torch tensor that stores the value of the go cue for each sinusoid.
+        heights: Torch tensor that stores the desired value of the output for each sinusoid.
+        samples: An integer that stores the total number of unique sinusoids.
+        """
     def __init__(
         self,
         n_unique_pulses: int = 250,
@@ -20,6 +41,17 @@ class SineDataset(Dataset):
         duration: int = 500,
         dt: float = 5e-2,
     ):
+        """Initializes the sine dataset based on desired frequency, amplitude, etc.
+
+        Args:
+            n_unique_pulses: Number of unique go times.
+            pulse_width: Duration of the go cue.
+            frequency: Frequency of the sinusoidal output.
+            delay:
+            amplitude: Amplitude of the sinusoidal output.
+            duration: Duration of a single trial.
+            dt: Duration of each time step.
+        """
 
         super(SineDataset, self).__init__()
         pulse_times = np.linspace(
@@ -44,29 +76,51 @@ class SineDataset(Dataset):
 
         pulses = torchify(gaussian_filter1d(pulses, sigma=1, axis=0))
         targets = torchify(targets)
-        self.x = pulses
-        self.y = targets
+        self.pulses = pulses
+        self.heights = targets
         self.samples = n_unique_pulses
 
     def __getitem__(self, item):
-        """"""
-        return self.x[:, item], self.y[:, item]
+        """Returns a sample from the dataset"""
+        return self.pulses[:, item], self.heights[:, item]
 
     def __len__(self):
-        """"""
+        """Returns the number of samples in the dataset"""
         return self.samples
 
 
 class PacmanDataset(Dataset):
+    """Class for generating samples for feedback driven pacman task.
+
+    This class samples continuous trajectories from a gaussian process. It also
+    returns a tuple relating to object mass, environment viscosity, and pedal polarity.
+
+    Attributes:
+        kernel: Gaussian process kernel used to draw target trajectories
+        contexts: Torch tensor of contexts, where each context is given by
+            (object mass, environment viscosity, pedal polarity)
+        heights: Torch tensor of target heights.
+        samples: Number of trajectories in dataset.
+    """
     def __init__(
         self,
         trial_duration: int = 500,
         sigma: float = 25,
         n_samples: int = 100,
-        masses: Sequence = None,
-        viscosity: Sequence = None,
-        polarity: Sequence = None,
+        masses: Optional[Sequence] = None,
+        viscosity: Optional[Sequence] = None,
+        polarity: Optional[Sequence] = None,
     ):
+        """Instantiates target trajectories for pacman task
+
+        Args:
+            trial_duration: Duration of a pacman trial
+            sigma: Standard deviation of autocorrelation kernel
+            n_samples: Number of trajectories to sample
+            masses: Set of masses of dot. Must be greater than 0.
+            viscosity: Set of environment viscosities. Must be nonnegative.
+            polarity: Set of polarities to draw from. Must be -1 or 1
+        """
         super(PacmanDataset, self).__init__()
         if masses is None:
             masses = (0.5, 1, 1.5)
@@ -91,8 +145,8 @@ class PacmanDataset(Dataset):
             contexts[idx] = np.asarray([mass, visc, polar])
             out_targets[idx] = trajectory
 
-        self.x = torchify(contexts).T
-        self.y = torchify(out_targets).T
+        self.contexts: torch.Tensor = torchify(contexts).T
+        self.heights: torch.Tensor = torchify(out_targets).T
         self.samples = n_entries
 
     def __getitem__(self, item):
@@ -104,7 +158,7 @@ class PacmanDataset(Dataset):
         Returns:
 
         """
-        return self.x[:, item], self.y[:, item]
+        return self.contexts[:, item], self.heights[:, item]
 
     def __len__(self):
         """"""
@@ -135,9 +189,3 @@ class PacmanDataset(Dataset):
         return ys
 
 
-if __name__ == "__main__":
-    data_set = PacmanDataset()
-    first_data = data_set[0]
-    plt.plot(first_data[1])
-    plt.pause(1)
-    pdb.set_trace()
