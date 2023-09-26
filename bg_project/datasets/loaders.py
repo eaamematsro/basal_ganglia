@@ -12,12 +12,12 @@ Examples:
     first_data = data_set[0]
 """
 import pdb
-import matplotlib.pyplot as plt
-import numpy as np
-from torch.utils.data import Dataset, DataLoader
+import matplotlib.pyplot as plt # type: ignore
+import numpy as np # type: ignore
+from torch.utils.data import Dataset, DataLoader # type: ignore
 from model_factory.factory_utils import torchify
-from scipy.ndimage import gaussian_filter1d
-from scipy.spatial.distance import cdist
+from scipy.ndimage import gaussian_filter1d # type: ignore
+from scipy.spatial.distance import cdist # type: ignore
 from typing import Sequence, Optional
 from itertools import product
 
@@ -30,7 +30,8 @@ class SineDataset(Dataset):
         pulses: Torch tensor that stores the value of the go cue for each sinusoid.
         heights: Torch tensor that stores the desired value of the output for each sinusoid.
         samples: An integer that stores the total number of unique sinusoids.
-        """
+    """
+
     def __init__(
         self,
         n_unique_pulses: int = 250,
@@ -188,5 +189,3 @@ class PacmanDataset(Dataset):
             mean=np.zeros(self.kernel.shape[0]), cov=self.kernel, size=n_samples
         )
         return ys
-
-
