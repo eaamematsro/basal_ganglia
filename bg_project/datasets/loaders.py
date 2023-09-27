@@ -106,8 +106,8 @@ class PacmanDataset(Dataset):
 
     def __init__(
         self,
-        trial_duration: int = 500,
-        sigma: float = 25,
+        trial_duration: int = 150,
+        sigma_fraction: float = .05,
         n_samples: int = 100,
         masses: Optional[Sequence] = None,
         viscosity: Optional[Sequence] = None,
@@ -117,7 +117,8 @@ class PacmanDataset(Dataset):
 
         Args:
             trial_duration: Duration of a pacman trial
-            sigma: Standard deviation of autocorrelation kernel
+            sigma_fraction: fraction of the trial duration to use as
+             standard deviation of autocorrelation kernel
             n_samples: Number of trajectories to sample
             masses: Set of masses of dot. Must be greater than 0.
             viscosity: Set of environment viscosities. Must be nonnegative.
@@ -128,11 +129,12 @@ class PacmanDataset(Dataset):
             masses = (0.5, 1, 1.5)
 
         if viscosity is None:
-            viscosity = (0, 0.05, 0.1)
+            viscosity = (0, 0.5, 1)
 
         if polarity is None:
-            polarity = (-1, 1)
+            polarity = (1, -1)
 
+        sigma = sigma_fraction * trial_duration
         xs = np.expand_dims(np.linspace(0, trial_duration, trial_duration), 1)
         self.kernel = self.exponentiated_quadratic(xs, xs, sigma=sigma)
         targets = self.sample_gaussian_process(n_samples=n_samples)

@@ -38,7 +38,7 @@ class GenerateSine(Task):
     def __init__(
         self,
         network: Optional[str] = "RNNFeedbackBG",
-        nneurons: int = 150,
+        nneurons: int = 250,
         duration: int = 500,
         nbg: int = 10,
         **kwargs,
@@ -410,8 +410,8 @@ class MultiGainPacMan(Task):
     def __init__(
         self,
         network: Optional[str] = "RNNFeedbackBG",
-        nneurons: int = 150,
-        duration: int = 500,
+        nneurons: int = 250,
+        duration: int = 150,
         nbg: int = 10,
         ncontext: int = 3,
         apply_energy_penalty: Optional[Tuple[str, ...]] = None,

@@ -347,6 +347,9 @@ class MultiHeadMLP(Module):
         return y
 
 
+# TODO(eamematsro): Add a feedforward multicontext network
+
+
 def transfer_network_weights(
     target_model: Module, source: Module, freeze: bool = False
 ) -> Module:
