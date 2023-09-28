@@ -439,7 +439,7 @@ class MultiGainPacMan(Task):
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
-            torchify(np.random.randn(nneurons, 1) / np.sqrt(nneurons))
+            torchify(np.random.randn(nneurons, 1) / np.sqrt(1))
         )
         self.penalize_activity = apply_energy_penalty
         self.duration = duration
@@ -450,7 +450,7 @@ class MultiGainPacMan(Task):
 
     def configure_optimizers(self):
         """"""
-        self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
+        self.optimizer = torch.optim.Adam(self.network.parameters())
         return self.optimizer
 
     def forward(
@@ -473,9 +473,9 @@ class MultiGainPacMan(Task):
 
         for ti in range(self.duration):
             rnn_input = {
-                "displacement": ((targets[ti - 1] - position_store[ti - 1].squeeze()))[
+                "displacement": torch.clip((targets[ti] - position_store[ti - 1].squeeze())[
                     :, None
-                ]
+                ], -max_pos, max_pos)
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
             acceleration = (
@@ -483,8 +483,8 @@ class MultiGainPacMan(Task):
                 - velocity * contexts[1][:, None]
             ) / (contexts[0][:, None])
             velocity = velocity + self.dt * acceleration
-            position_store[ti] = torch.clip(
-                position + self.dt * velocity, -max_pos, max_pos
+            position_store[ti] = (
+                position + self.dt * velocity
             )
             for key in self.penalize_activity:
                 if energies[key] is None:
@@ -498,7 +498,9 @@ class MultiGainPacMan(Task):
     def compute_loss(
         self, target: torch.Tensor, model_output: torch.Tensor, network_energy: dict
     ) -> dict:
-        trajectory_loss = nn.functional.mse_loss(model_output, target)
+        # pdb.set_trace()
+        trajectory_loss = torch.log(torch.pow(model_output - target, 2).sum(axis=0)).mean()
+        # trajectory_loss = nn.functional.mse_loss(model_output.T, target.T)
         output_weight_loss = self.output_weight_penalty * torch.linalg.norm(
             self.network.Wout
         )
@@ -566,6 +568,33 @@ class MultiGainPacMan(Task):
         self.log("hp_metric", loss["trajectory"], sync_dist=True)
         return loss["total"]
 
+    def evaluate_training(self, batch):
+        x, y = batch
+        with torch.no_grad():
+            positions, energies = self.forward(x.T, y.T)
+        targets = y.detach().cpu().numpy()
+        outputs = positions.squeeze().detach().cpu().numpy().T
+        plt.figure()
+        plt.plot(targets[0], label='Target')
+        plt.plot(outputs[0], label='Model Output')
+        plt.legend()
+        plt.pause(.1)
+
+    def change_context(self, batch, new_context: Tuple = (1, 0, -1)):
+
+        x, y = batch
+        x[:] = torchify(np.asarray(new_context))
+
+        with torch.no_grad():
+            positions, energies = self.forward(x.T, y.T)
+
+        targets = y.detach().cpu().numpy()
+        outputs = positions.squeeze().detach().cpu().numpy().T
+        plt.figure()
+        plt.plot(targets[0], label='Target')
+        plt.plot(outputs[0], label='Model Output')
+        plt.legend()
+        plt.pause(.1)
 
 def set_results_path(task_name: str):
     cwd = os.getcwd()

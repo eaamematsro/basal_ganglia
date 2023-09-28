@@ -172,20 +172,20 @@ class ThalamicRNN(Module):
         self.tau = tau
         self.noise_model = noise_model
 
-    def reconfigure_u_v(self, g1: float = 0, g2: float = 0):
+    def reconfigure_u_v(self, g1: float = 0, g2: float = 0, requires_grad: bool = False):
         J = self.J.detach().cpu().numpy()
         U, S, Vh = np.linalg.svd(J)
         bg_rank = self.U.shape[1]
 
-        self.U = torchify(
+        self.U = nn.Parameter(torchify(
             (np.sqrt(1 - g1**2)) * U[:, :bg_rank]
             + g1**2 * np.random.randn(J.shape[0], bg_rank) / np.sqrt(J.shape[0])
-        )
+        ), requires_grad=requires_grad)
 
-        self.V = torchify(
+        self.V = nn.Parameter(torchify(
             (np.sqrt(1 - g2**2)) * Vh[:bg_rank]
             + g2**2 * np.random.randn(bg_rank, J.shape[0]) / np.sqrt(J.shape[0])
-        )
+        ), requires_grad=requires_grad)
 
     def forward(
         self,
@@ -275,7 +275,7 @@ class MLP(Module):
         for m in modules:
             if isinstance(m, nn.Linear):
                 # nn.init.xavier_normal_(m.weight, gain=nn.init.calculate_gain('sigmoid'))
-                nn.init.normal_(m.weight, std=1 / m.weight.shape[0])
+                nn.init.normal_(m.weight, std= np.sqrt(1/m.weight.shape[0]))
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
