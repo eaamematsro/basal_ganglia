@@ -92,10 +92,26 @@ if __name__ == "__main__":
         trained_network = loaded_data['full_model']
         simple_model.network = trained_network
 
+        train_set, val_set, test_set = split_dataset(
+            PacmanDataset(n_samples=25, trial_duration=trial_duration),
+            (0.6, 0.2, 0.2),
+        )
+
+        train_loader = DataLoader(
+            train_set["data"],
+            batch_size=batch_size,
+            sampler=train_set["sampler"],
+            num_workers=10,
+        )
+
+        val_loader = DataLoader(
+            val_set["data"], batch_size=batch_size, num_workers=10
+        )
+
         for network in test_networks:
             for nbg in [10, 25, 50]:
                 thalamic_model = MultiGainPacMan(network=network, duration=trial_duration, nbg=nbg,
-                                                 apply_energy_penalty=("r_act", ), output_weight_penalty=0,
+                                                 apply_energy_penalty=("r_act", "bg_act"), output_weight_penalty=0,
                                                  bg_input_size=3, teacher_output_penalty=weight_penalty)
 
                 # Transfer and freeze weights from trained network's rnn module
@@ -103,8 +119,8 @@ if __name__ == "__main__":
                     thalamic_model.network, simple_model.network, freeze=True
                 )
 
-                # if network == 'RNNStaticBG':
-                #     thalamic_model.network.rnn.reconfigure_u_v()
+                if network == 'RNNStaticBG':
+                    thalamic_model.network.rnn.reconfigure_u_v()
 
                 # Training on an easier condition set to get better initializations
 
@@ -142,22 +158,6 @@ if __name__ == "__main__":
                 #     val_dataloaders=val_loader,
                 # )
 
-                train_set, val_set, test_set = split_dataset(
-                    PacmanDataset(n_samples=25, trial_duration=trial_duration),
-                    (0.6, 0.2, 0.2),
-                )
-
-                train_loader = DataLoader(
-                    train_set["data"],
-                    batch_size=batch_size,
-                    sampler=train_set["sampler"],
-                    num_workers=10,
-                )
-
-                val_loader = DataLoader(
-                    val_set["data"], batch_size=batch_size, num_workers=10
-                )
-
                 save_path = set_results_path(type(thalamic_model).__name__)[0]
 
                 trainer = Trainer(
@@ -173,26 +173,17 @@ if __name__ == "__main__":
                     train_dataloaders=train_loader,
                     val_dataloaders=val_loader,
                 )
-                #
-                # trainer.test(
-                #     thalamic_model,
-                #     dataloaders=DataLoader(test_set["data"], num_workers=10),
-                # )
+
+                trainer.test(
+                    thalamic_model,
+                    dataloaders=DataLoader(test_set["data"], num_workers=10),
+                )
 
                 for batch_idx, batch in enumerate(val_loader):
                     thalamic_model.evaluate_training(batch, original_network=simple_model)
 
-                bg_weights = []
-                import torch.nn as nn
-                for layer in thalamic_model.network.bg.mlp:
-                    if isinstance(layer, nn.Linear):
-                        bg_weights.append(layer.weight)
-                pdb.set_trace()
-                plt.close('all')
-
                 for batch_idx, batch in enumerate(val_loader):
                     simple_model.change_context(batch, new_context=(2, 0, 1))
 
-                pdb.set_trace()
-
                 thalamic_model.save_model()
+                plt.close('all')

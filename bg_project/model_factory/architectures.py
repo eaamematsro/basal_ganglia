@@ -51,7 +51,8 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         date_save_path.mkdir(exist_ok=True)
         self.save_path = date_save_path
 
-        reg_exp = "_".join(["model_", "\d+"])
+        reg_exp = "_".join(["model", "\d+"])
+
         files = [
             x
             for x in date_save_path.iterdir()
@@ -59,6 +60,7 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         ]
         folder_path = date_save_path / f"model_{len(files)}"
         folder_path.mkdir(exist_ok=True)
+        pdb.set_trace()
         self.save_path = folder_path / "model.pickle"
         self.text_path = folder_path / "params.json"
 
