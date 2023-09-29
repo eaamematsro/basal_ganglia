@@ -160,7 +160,7 @@ class ThalamicRNN(Module):
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
         self.U = nn.Parameter(
-            torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
+            torchify(np.random.randn(nneurons, nbg) / np.sqrt(nbg)),
             requires_grad=False,
         )
         self.V = nn.Parameter(
@@ -175,11 +175,17 @@ class ThalamicRNN(Module):
     def reconfigure_u_v(self, g1: float = 0, g2: float = 0, requires_grad: bool = False):
         J = self.J.detach().cpu().numpy()
         U, S, Vh = np.linalg.svd(J)
+        scale_u = np.sqrt(self.U.detach().cpu().numpy().var() / U.var())
+        scale_v = np.sqrt(self.V.detach().cpu().numpy().var() / Vh.var())
+
+        U *= scale_u
+        Vh *= scale_v
+
         bg_rank = self.U.shape[1]
 
         self.U = nn.Parameter(torchify(
             (np.sqrt(1 - g1**2)) * U[:, :bg_rank]
-            + g1**2 * np.random.randn(J.shape[0], bg_rank) / np.sqrt(J.shape[0])
+            + g1**2 * np.random.randn(J.shape[0], bg_rank) / np.sqrt(bg_rank)
         ), requires_grad=requires_grad)
 
         self.V = nn.Parameter(torchify(
@@ -242,9 +248,9 @@ class MLP(Module):
         super(MLP, self).__init__()
         if layer_sizes is None or not (type(layer_sizes) == tuple):
             layer_sizes = (
-                25,
-                15,
-                10,
+                150,
+                100,
+                50,
             )
 
         if non_linearity is None:
@@ -269,8 +275,10 @@ class MLP(Module):
     def forward(self, inputs: torch.Tensor, noise_scale: float = 0.05):
         """
 
-        :param inputs: [batch, inputs]
-        :return:
+
+        Args:
+            inputs:
+            noise_scale:
         """
         y = self.noise_model(self.mlp(inputs), noise_scale)
         return y
@@ -279,7 +287,7 @@ class MLP(Module):
         for m in modules:
             if isinstance(m, nn.Linear):
                 # nn.init.xavier_normal_(m.weight, gain=nn.init.calculate_gain('sigmoid'))
-                nn.init.normal_(m.weight, std= np.sqrt(1/m.weight.shape[0]))
+                nn.init.normal_(m.weight, std=np.sqrt(1/m.weight.shape[1]))
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 

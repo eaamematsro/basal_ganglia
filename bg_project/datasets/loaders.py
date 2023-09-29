@@ -126,13 +126,13 @@ class PacmanDataset(Dataset):
         """
         super(PacmanDataset, self).__init__()
         if masses is None:
-            masses = (0.5, 1, 1.5)
+            masses = (0.5, 1, 2)
 
         if viscosity is None:
-            viscosity = (0, 0.5, 1)
+            viscosity = (0, 1, 2, 3)
 
         if polarity is None:
-            polarity = (1, -1)
+            polarity = (1, )
 
         sigma = sigma_fraction * trial_duration
         xs = np.expand_dims(np.linspace(0, trial_duration, trial_duration), 1)

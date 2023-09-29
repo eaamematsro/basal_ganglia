@@ -62,8 +62,8 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         self.save_path = folder_path / "model.pickle"
         self.text_path = folder_path / "params.json"
 
-    def save_model(self):
-        data_dict = {"network": self.network, "full_model": self}
+    def save_model(self, **kwargs):
+        data_dict = {"network": self, **kwargs}
         with open(self.save_path, "wb") as handle:
             pickle.dump(data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 

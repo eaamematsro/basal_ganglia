@@ -8,8 +8,8 @@ import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from model_factory.architectures import NETWORKS
-from typing import Optional, Any, Tuple
+from model_factory.architectures import NETWORKS, BaseArchitecture
+from typing import Optional, Any, Tuple, Callable
 from scipy.ndimage import gaussian_filter1d
 from model_factory.factory_utils import torchify
 from datetime import date
@@ -17,20 +17,30 @@ from pathlib import Path
 
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
-    def __init__(self, network: str, **kwargs):
+    def __init__(self, network: str,
+                 lr: float = 1e-3,
+                 **kwargs):
         super(Task, self).__init__()
         self.network = NETWORKS[network](**kwargs)
         self.type = network
+        self.lr = lr
+        self.optimizer = None
+        self.lr_scheduler = None
 
-    @abc.abstractmethod
     def configure_optimizers(self):
         """"""
-
+        self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3, lr=self.lr)
+        self.lr_scheduler = {
+            'scheduler': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, 50),
+            'name': "lr_rate",
+        }
+        return [self.optimizer], [self.lr_scheduler]
     @abc.abstractmethod
     def compute_loss(self, **kwargs):
         """"""
 
     def save_model(self):
+        # TODO: Save network should
         self.network.save_model()
 
 
@@ -292,7 +302,7 @@ class GenerateSinePL(Task):
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
-            torchify(np.random.randn(nneurons, 1) / np.sqrt(nneurons))
+            torchify(np.random.randn(nneurons, 1) / np.sqrt(1))
         )
         self.duration = duration
         self.dt = self.network.rnn.dt
@@ -392,7 +402,7 @@ class GenerateSinePL(Task):
         """
         x, y = batch
         positions = self.forward(x.T)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        loss = nn.functional.mse_loss(positions.squeeze(), y.T.squeeze())
         self.log(
             "test_loss",
             loss,
@@ -410,7 +420,7 @@ class MultiGainPacMan(Task):
     def __init__(
         self,
         network: Optional[str] = "RNNFeedbackBG",
-        nneurons: int = 250,
+        number_of_neurons: int = 250,
         duration: int = 150,
         nbg: int = 10,
         ncontext: int = 3,
@@ -423,14 +433,16 @@ class MultiGainPacMan(Task):
             apply_energy_penalty = ()
 
         kwargs["ncontext"] = ncontext
-        rnn_input_source = {"displacement": (1, True)}
+        rnn_input_source = {"current_height": (1, True),
+                            "target_derivative": (1, True),
+                            "target_height": (1, True)}
 
         super(MultiGainPacMan, self).__init__(
             network=network,
-            nneurons=nneurons,
+            nneurons=number_of_neurons,
             nbg=nbg,
             input_sources=rnn_input_source,
-            include_bias=False,
+            include_bias=True,
             **kwargs,
         )
 
@@ -439,7 +451,7 @@ class MultiGainPacMan(Task):
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
-            torchify(np.random.randn(nneurons, 1) / np.sqrt(1))
+            torchify(np.random.randn(number_of_neurons, 1) / np.sqrt(1))
         )
         self.penalize_activity = apply_energy_penalty
         self.duration = duration
@@ -447,11 +459,6 @@ class MultiGainPacMan(Task):
         self.optimizer = None
         self.energy_penalty = energy_penalty
         self.output_weight_penalty = output_weight_penalty
-
-    def configure_optimizers(self):
-        """"""
-        self.optimizer = torch.optim.Adam(self.network.parameters())
-        return self.optimizer
 
     def forward(
         self, contexts: torch.Tensor, targets: torch.Tensor, max_pos: float = 10
@@ -472,10 +479,11 @@ class MultiGainPacMan(Task):
         [energies.update({key: None}) for key in self.penalize_activity]
 
         for ti in range(self.duration):
+
             rnn_input = {
-                "displacement": torch.clip((targets[ti] - position_store[ti - 1].squeeze())[
-                    :, None
-                ], -max_pos, max_pos)
+                "current_height": position_store[ti - 1].clone(),
+                "target_derivative": ((targets[ti] - targets[ti - 1]))[:, None],
+                "target_height": targets[ti][:, None]
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
             acceleration = (
@@ -483,8 +491,8 @@ class MultiGainPacMan(Task):
                 - velocity * contexts[1][:, None]
             ) / (contexts[0][:, None])
             velocity = velocity + self.dt * acceleration
-            position_store[ti] = (
-                position + self.dt * velocity
+            position_store[ti] = torch.clip(
+                position + self.dt * velocity, -max_pos, max_pos
             )
             for key in self.penalize_activity:
                 if energies[key] is None:
@@ -568,17 +576,38 @@ class MultiGainPacMan(Task):
         self.log("hp_metric", loss["trajectory"], sync_dist=True)
         return loss["total"]
 
-    def evaluate_training(self, batch):
+    def evaluate_training(self, batch, original_network: Optional[Task] = None):
         x, y = batch
         with torch.no_grad():
             positions, energies = self.forward(x.T, y.T)
+            bg_outputs = self.network.bg(x)
+            if original_network is not None:
+                positions_initial, _ = original_network(x.T, y.T)
+                outputs_initial = positions_initial.squeeze().detach().cpu().numpy().T
+            else:
+                positions_initial = None
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
         plt.figure()
         plt.plot(targets[0], label='Target')
-        plt.plot(outputs[0], label='Model Output')
+        plt.plot(outputs[0], label='Trained Model Output')
+        if positions_initial is not None:
+            plt.plot(outputs_initial[0], label='Original Model Output', ls='--')
         plt.legend()
+        fig, ax = plt.subplots(1, 2, figsize=(12, 8))
+        ax[0].set_title('Contexts')
+        g = ax[0].imshow(x, aspect='auto')
+        plt.colorbar(g, ax=ax[0], label='Value')
+        ax[0].set_xlabel('Context')
+        ax[0].set_xticks(ticks=range(3), labels=['Mass', 'Viscositiy', 'Polarity'], rotation=45)
+        ax[0].set_ylabel('Trial')
+        ax[1].set_title('Basal Gangial Output')
+        g = ax[1].imshow(bg_outputs, aspect='auto')
+        plt.colorbar(g, ax=ax[1], label='Neural activity')
+        ax[1].set_xlabel('Neuron')
+        ax[1].set_ylabel('Trial')
         plt.pause(.1)
+
 
     def change_context(self, batch, new_context: Tuple = (1, 0, -1)):
 
@@ -595,6 +624,7 @@ class MultiGainPacMan(Task):
         plt.plot(outputs[0], label='Model Output')
         plt.legend()
         plt.pause(.1)
+
 
 def set_results_path(task_name: str):
     cwd = os.getcwd()
