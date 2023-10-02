@@ -18,10 +18,10 @@ from pathlib import Path
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
     def __init__(self, network: str,
-                 lr: float = 1e-3,
+                 lr: float = 1e-3, task: Optional[str] = None,
                  **kwargs):
         super(Task, self).__init__()
-        self.network = NETWORKS[network](**kwargs)
+        self.network = NETWORKS[network](task=task, **kwargs)
         self.type = network
         self.lr = lr
         self.optimizer = None
@@ -41,7 +41,15 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
 
     def save_model(self):
         # TODO: Save network should
-        self.network.save_model()
+        self.network.save_model(task=self)
+
+    def count_parameters(self):
+        """Returns the number of trainable parameters in a model"""
+        running_count = 0
+        for param in self.network.parameters():
+            if param.requires_grad:
+                running_count += np.prod(param.shape)
+        return running_count
 
 
 class GenerateSine(Task):
@@ -443,6 +451,7 @@ class MultiGainPacMan(Task):
             nbg=nbg,
             input_sources=rnn_input_source,
             include_bias=True,
+            task="MultiGainPacMan",
             **kwargs,
         )
 
@@ -486,6 +495,7 @@ class MultiGainPacMan(Task):
                 "target_height": targets[ti][:, None]
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
+
             acceleration = (
                 (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
                 - velocity * contexts[1][:, None]
@@ -526,6 +536,8 @@ class MultiGainPacMan(Task):
             "output_weight": output_weight_loss,
             "total": total_loss,
         }
+        if torch.isnan(total_loss) or torch.isinf(total_loss):
+            pdb.set_trace()
         return loss
 
     def training_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:

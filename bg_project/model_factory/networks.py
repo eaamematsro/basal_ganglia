@@ -287,9 +287,9 @@ class MLP(Module):
         for m in modules:
             if isinstance(m, nn.Linear):
                 # nn.init.xavier_normal_(m.weight, gain=nn.init.calculate_gain('sigmoid'))
-                nn.init.normal_(m.weight, std=np.sqrt(1/m.weight.shape[1]))
+                nn.init.normal_(m.weight, std=np.sqrt(1/(m.weight.shape[0] * m.weight.shape[1])))
                 if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+                    nn.init.normal_(m.bias, std=np.sqrt(1/(m.bias.shape[0])))
 
 
 class MultiHeadMLP(Module):

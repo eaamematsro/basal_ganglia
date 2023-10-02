@@ -24,7 +24,7 @@ def split_dataset(dataset, fractions: Sequence = (0.6, 0.2, 0.2)):
 
 
 if __name__ == "__main__":
-    test_networks = ["RNNStaticBG", "RNNMultiContextInput"]
+    test_networks = ["RNNMultiContextInput", "RNNStaticBG", ]
 
     weight_penalties = np.logspace(-5, -1)
     torch.set_float32_matmul_precision("medium")
@@ -34,29 +34,29 @@ if __name__ == "__main__":
 
         simple_model = MultiGainPacMan(network="VanillaRNN", duration=trial_duration, apply_energy_penalty=("r_act",),
                                        output_weight_penalty=weight_penalty, bg_input_size=3)
-        # dataset = PacmanDataset(
-        #     n_samples=500,
-        #     masses=(1,),
-        #     viscosity=(0,),
-        #     polarity=(1,),
-        #     trial_duration=150,
-        # )
+        dataset = PacmanDataset(
+            n_samples=500,
+            masses=(1,),
+            viscosity=(0,),
+            polarity=(1,),
+            trial_duration=150,
+        )
         batch_size = 25
 
-        # train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
-        #
-        # train_loader = DataLoader(
-        #     train_set["data"],
-        #     batch_size=batch_size,
-        #     sampler=train_set["sampler"],
-        #     num_workers=10,
-        # )
-        # val_loader = DataLoader(val_set["data"], batch_size=batch_size, num_workers=10)
-        #
-        # save_path = set_results_path(type(simple_model).__name__)[0]
-        #
+        train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
+
+        train_loader = DataLoader(
+            train_set["data"],
+            batch_size=batch_size,
+            sampler=train_set["sampler"],
+            num_workers=10,
+        )
+        val_loader = DataLoader(val_set["data"], batch_size=batch_size, num_workers=10)
+
+        save_path = set_results_path(type(simple_model).__name__)[0]
+
         # trainer = Trainer(
-        #     max_epochs=150,
+        #     max_epochs=300,
         #     gradient_clip_val=10,
         #     accelerator="gpu",
         #     devices=1,
@@ -86,14 +86,16 @@ if __name__ == "__main__":
         #     simple_model, dataloaders=DataLoader(test_set["data"], num_workers=10)
         # )
 
-        file_path = "/home/elom/Documents/basal_ganglia/data/models/2023-09-29/model_0/model.pickle"
+        # simple_model.save_model()
+        file_path = "/home/elom/Documents/basal_ganglia/data/models/2023-09-29/model_1/model.pickle"
         with open(file_path, 'rb') as h:
             loaded_data = pickle.load(h)
-        trained_network = loaded_data['full_model']
+        trained_network = loaded_data['network']
         simple_model.network = trained_network
 
         train_set, val_set, test_set = split_dataset(
-            PacmanDataset(n_samples=25, trial_duration=trial_duration),
+            PacmanDataset(n_samples=25, trial_duration=trial_duration,
+                          polarity=(-1, 1)),
             (0.6, 0.2, 0.2),
         )
 
@@ -109,10 +111,11 @@ if __name__ == "__main__":
         )
 
         for network in test_networks:
-            for nbg in [10, 25, 50]:
-                thalamic_model = MultiGainPacMan(network=network, duration=trial_duration, nbg=nbg,
-                                                 apply_energy_penalty=("r_act", "bg_act"), output_weight_penalty=0,
-                                                 bg_input_size=3, teacher_output_penalty=weight_penalty)
+            for nbg in [10, 25, 50, 100]:
+                thalamic_model = MultiGainPacMan(
+                    network=network, duration=trial_duration, nbg=nbg,
+                    apply_energy_penalty=("r_act", "bg_act"), output_weight_penalty=0,
+                    bg_input_size=3, teacher_output_penalty=weight_penalty)
 
                 # Transfer and freeze weights from trained network's rnn module
                 transfer_network_weights(
@@ -120,7 +123,7 @@ if __name__ == "__main__":
                 )
 
                 if network == 'RNNStaticBG':
-                    thalamic_model.network.rnn.reconfigure_u_v()
+                    thalamic_model.network.rnn.reconfigure_u_v(g1=1)
 
                 # Training on an easier condition set to get better initializations
 
@@ -182,6 +185,7 @@ if __name__ == "__main__":
                 for batch_idx, batch in enumerate(val_loader):
                     thalamic_model.evaluate_training(batch, original_network=simple_model)
 
+                pdb.set_trace()
                 for batch_idx, batch in enumerate(val_loader):
                     simple_model.change_context(batch, new_context=(2, 0, 1))
 

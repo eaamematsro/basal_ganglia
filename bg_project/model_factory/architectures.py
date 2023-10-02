@@ -14,13 +14,13 @@ from .networks import MLP, MultiHeadMLP, RNN, ThalamicRNN
 
 class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
     def __init__(
-        self,
+        self, task: Optional[str] = None, **kwargs
     ):
         super(BaseArchitecture, self).__init__()
         self.network = None
         self.save_path = None
         self.text_path = None
-        self.params = {}
+        self.task = task
         self.output_names = None
         self.set_save_path()
         self.set_outputs()
@@ -43,7 +43,10 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         """"""
         cwd = os.getcwd()
         cwd_path = Path(cwd)
-        model_path = cwd_path / "data/models"
+        if self.task is None:
+            model_path = cwd_path / "data/models"
+        else:
+            model_path = cwd_path / f"data/models/{self.task}"
         model_path.mkdir(exist_ok=True)
 
         date_str = date.today().strftime("%Y-%m-%d")
@@ -60,7 +63,6 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         ]
         folder_path = date_save_path / f"model_{len(files)}"
         folder_path.mkdir(exist_ok=True)
-        pdb.set_trace()
         self.save_path = folder_path / "model.pickle"
         self.text_path = folder_path / "params.json"
 
@@ -86,7 +88,7 @@ class VanillaRNN(BaseArchitecture):
         tau: float = 0.15,
         **kwargs,
     ):
-        super(VanillaRNN, self).__init__()
+        super(VanillaRNN, self).__init__(**kwargs)
         self.params = {
             "n_hidden": nneurons,
             "inputs": input_sources,
@@ -131,7 +133,7 @@ class RNNMultiContextInput(BaseArchitecture):
         include_bias: bool = True,
         **kwargs,
     ):
-        super(RNNMultiContextInput, self).__init__()
+        super(RNNMultiContextInput, self).__init__(**kwargs)
         self.params = {
             "n_hidden": nneurons,
             "nbg": nbg,
@@ -201,7 +203,7 @@ class RNNStaticBG(BaseArchitecture):
         include_bias: bool = True,
         **kwargs,
     ):
-        super(RNNStaticBG, self).__init__()
+        super(RNNStaticBG, self).__init__(**kwargs)
         self.params = {
             "n_hidden": nneurons,
             "nbg": nbg,
@@ -266,7 +268,7 @@ class RNNFeedbackBG(BaseArchitecture):
         include_bias: bool = True,
         **kwargs,
     ):
-        super(RNNFeedbackBG, self).__init__()
+        super(RNNFeedbackBG, self).__init__(**kwargs)
         self.params = {
             "n_hidden": nneurons,
             "nbg": nbg,
