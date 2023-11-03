@@ -203,9 +203,13 @@ class ThalamicRNN(Module):
         for input_name, input_value in inputs.items():
             out += input_value @ self.I[input_name]
 
-        rec_input = torch.einsum(
-            "ij, kj, jl, ki -> kl", self.U, r_thalamic, self.V, self.r
-        )
+        r_mat = torch.diag_embed(r_thalamic)
+        bg_tensor = torch.matmul(torch.matmul(r_mat, self.V), self.U)
+        rec_input = torch.matmul(bg_tensor, self.r.T.unsqueeze(2))
+
+        # rec_input = torch.einsum(
+        #     "ij, kj, jl, ki -> kl", self.U, r_thalamic, self.V, self.r
+        # )
 
         x = self.x + self.dt / self.tau * (
             self.noise_model(
