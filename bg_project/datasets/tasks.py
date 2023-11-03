@@ -31,10 +31,13 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
         """"""
         self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3, lr=self.lr)
         self.lr_scheduler = {
-            'scheduler': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, 50),
+            'scheduler': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                self.optimizer, 50,T_mult=2
+            ),
             'name': "lr_rate",
         }
         return [self.optimizer], [self.lr_scheduler]
+        # return self.optimizer
     @abc.abstractmethod
     def compute_loss(self, **kwargs):
         """"""
@@ -428,12 +431,12 @@ class MultiGainPacMan(Task):
     def __init__(
         self,
         network: Optional[str] = "RNNFeedbackBG",
-        number_of_neurons: int = 250,
+        number_of_neurons: int = 150,
         duration: int = 150,
         nbg: int = 10,
         ncontext: int = 3,
         apply_energy_penalty: Optional[Tuple[str, ...]] = None,
-        energy_penalty: float = 1e-3,
+        energy_penalty: float = 1e-2,
         output_weight_penalty: float = 1e-3,
         **kwargs,
     ):
@@ -470,7 +473,8 @@ class MultiGainPacMan(Task):
         self.output_weight_penalty = output_weight_penalty
 
     def forward(
-        self, contexts: torch.Tensor, targets: torch.Tensor, max_pos: float = 10
+        self, contexts: torch.Tensor, targets: torch.Tensor, max_pos: float = 10,
+            **kwargs
     ) -> Any:
         """"""
         if contexts.ndim == 1:
@@ -494,7 +498,7 @@ class MultiGainPacMan(Task):
                 "target_derivative": ((targets[ti] - targets[ti - 1]))[:, None],
                 "target_height": targets[ti][:, None]
             }
-            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
+            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
 
             acceleration = (
                 (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
@@ -514,7 +518,7 @@ class MultiGainPacMan(Task):
         return position_store, energies
 
     def compute_loss(
-        self, target: torch.Tensor, model_output: torch.Tensor, network_energy: dict
+        self, target: torch.Tensor, model_output: torch.Tensor, network_energy: Optional[dict] = None
     ) -> dict:
         # pdb.set_trace()
         trajectory_loss = torch.log(torch.pow(model_output - target, 2).sum(axis=0)).mean()
@@ -523,10 +527,11 @@ class MultiGainPacMan(Task):
             self.network.Wout
         )
         energy_loss = 0
-        for key in self.penalize_activity:
-            energy_loss = (
-                energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
-            )
+        if network_energy is not None:
+            for key in self.penalize_activity:
+                energy_loss = (
+                    energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
+                )
         total_loss = (
             trajectory_loss + self.energy_penalty * energy_loss + output_weight_loss
         )

@@ -5,7 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="068be01d-770f-4bcd-8be5-cef8b961c4d1" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/bg_project/pacman/scaling_laws.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bg_project/datasets/loaders.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/datasets/loaders.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bg_project/datasets/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/datasets/tasks.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bg_project/model_factory/architectures.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/model_factory/architectures.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bg_project/model_factory/networks.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/model_factory/networks.py" afterDir="false" />
@@ -71,6 +73,7 @@
       <recent name="$PROJECT_DIR$/scripts" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/bg_project/pacman" />
       <recent name="$PROJECT_DIR$/bg_project" />
       <recent name="$PROJECT_DIR$/datasets" />
       <recent name="$PROJECT_DIR$" />
@@ -121,7 +124,10 @@
       <workItem from="1693311714843" duration="6040000" />
       <workItem from="1693329731050" duration="1672000" />
       <workItem from="1695388717064" duration="11013000" />
-      <workItem from="1695908972953" duration="35752000" />
+      <workItem from="1695908972953" duration="47288000" />
+      <workItem from="1696431010065" duration="599000" />
+      <workItem from="1697206263723" duration="599000" />
+      <workItem from="1697386897124" duration="5000" />
     </task>
     <servers />
   </component>

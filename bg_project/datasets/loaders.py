@@ -14,6 +14,7 @@ Examples:
 import pdb
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from torch.utils.data import Dataset, DataLoader
 from model_factory.factory_utils import torchify
 from scipy.ndimage import gaussian_filter1d
@@ -132,7 +133,7 @@ class PacmanDataset(Dataset):
             viscosity = (0, 1, 2, 3)
 
         if polarity is None:
-            polarity = (1, )
+            polarity = (1, -1)
 
         sigma = sigma_fraction * trial_duration
         xs = np.expand_dims(np.linspace(0, trial_duration, trial_duration), 1)

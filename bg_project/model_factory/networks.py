@@ -1,12 +1,19 @@
 import abc
 import pdb
-
 import torch
 import numpy as np
 import torch.nn as nn
+from enum import Enum
+from torch.distributions.multivariate_normal import MultivariateNormal
 from .noise_models import GaussianNoise, GaussianSignalDependentNoise
 from .factory_utils import torchify
 from typing import Callable, Optional, Dict, List, Tuple
+
+
+class VarianceTypes(Enum):
+    UnitVariance = "unit_variance"
+    Diagonal = "diagonal_variance"
+    Full = "full"
 
 
 class Module(nn.Module, metaclass=abc.ABCMeta):
@@ -91,7 +98,7 @@ class RNN(Module):
     def forward(
         self,
         inputs: Dict[str, torch.Tensor],
-        noise_scale: float = 0.1,
+        noise_scale: float = 1,
         validate_inputs: bool = False,
     ):
         if validate_inputs:
@@ -161,7 +168,7 @@ class ThalamicRNN(Module):
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
         self.U = nn.Parameter(
             torchify(np.random.randn(nneurons, nbg) / np.sqrt(nbg)),
-            requires_grad=False,
+            requires_grad=True,
         )
         self.V = nn.Parameter(
             torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
@@ -172,7 +179,9 @@ class ThalamicRNN(Module):
         self.tau = tau
         self.noise_model = noise_model
 
-    def reconfigure_u_v(self, g1: float = 0, g2: float = 0, requires_grad: bool = False):
+    def reconfigure_u_v(
+        self, g1: float = 0, g2: float = 0, requires_grad: bool = False
+    ):
         J = self.J.detach().cpu().numpy()
         U, S, Vh = np.linalg.svd(J)
         scale_u = np.sqrt(self.U.detach().cpu().numpy().var() / U.var())
@@ -183,21 +192,29 @@ class ThalamicRNN(Module):
 
         bg_rank = self.U.shape[1]
 
-        self.U = nn.Parameter(torchify(
-            (np.sqrt(1 - g1**2)) * U[:, :bg_rank]
-            + g1**2 * np.random.randn(J.shape[0], bg_rank) / np.sqrt(bg_rank)
-        ), requires_grad=requires_grad)
+        u_grad = self.U.requires_grad
+        v_grad = self.V.requires_grad
+        self.U = nn.Parameter(
+            torchify(
+                (np.sqrt(1 - g1**2)) * U[:, :bg_rank]
+                + g1**2 * np.random.randn(J.shape[0], bg_rank) / np.sqrt(bg_rank)
+            ),
+            requires_grad=(requires_grad if requires_grad else u_grad),
+        )
 
-        self.V = nn.Parameter(torchify(
-            (np.sqrt(1 - g2**2)) * Vh[:bg_rank]
-            + g2**2 * np.random.randn(bg_rank, J.shape[0]) / np.sqrt(J.shape[0])
-        ), requires_grad=requires_grad)
+        self.V = nn.Parameter(
+            torchify(
+                (np.sqrt(1 - g2**2)) * Vh[:bg_rank]
+                + g2**2 * np.random.randn(bg_rank, J.shape[0]) / np.sqrt(J.shape[0])
+            ),
+            requires_grad=(requires_grad if requires_grad else v_grad),
+        )
 
     def forward(
         self,
         r_thalamic,
         inputs: Optional[Dict[str, torch.Tensor]] = None,
-        noise_scale: float = 0.1,
+        noise_scale: float = 1,
         validate_inputs: bool = False,
     ):
         if inputs is None:
@@ -272,7 +289,7 @@ class MLP(Module):
         self.mlp = nn.Sequential(*modules)
         self.noise_model = noise_model
 
-    def forward(self, inputs: torch.Tensor, noise_scale: float = 0.05):
+    def forward(self, inputs: torch.Tensor, noise_scale: float = 1):
         """
 
 
@@ -287,9 +304,11 @@ class MLP(Module):
         for m in modules:
             if isinstance(m, nn.Linear):
                 # nn.init.xavier_normal_(m.weight, gain=nn.init.calculate_gain('sigmoid'))
-                nn.init.normal_(m.weight, std=np.sqrt(1/(m.weight.shape[0] * m.weight.shape[1])))
+                nn.init.normal_(
+                    m.weight, std=np.sqrt(1 / (m.weight.shape[0] * m.weight.shape[1]))
+                )
                 if m.bias is not None:
-                    nn.init.normal_(m.bias, std=np.sqrt(1/(m.bias.shape[0])))
+                    nn.init.normal_(m.bias, std=np.sqrt(1 / (m.bias.shape[0])))
 
 
 class MultiHeadMLP(Module):
@@ -357,6 +376,149 @@ class MultiHeadMLP(Module):
 
         y = self.shared_mlp(combined_input, noise_scale)
         return y
+
+
+class Gaussian(Module):
+    def __init__(
+        self,
+        input_dim: int = 50,
+        output_dim: int = 10,
+    ):
+        super().__init__()
+        self.mu = nn.Linear(input_dim, output_dim)
+        self.var = nn.Sequential(
+            nn.Linear(input_dim, output_dim),
+            nn.Softplus(),
+        )
+
+    @classmethod
+    def reparameterize(self, mu, var):
+        std = torch.sqrt(var + torch.finfo().eps)
+        noise = torch.randn_like(var)
+        z = mu + std * noise
+        return z
+
+    def forward(self, x):
+        mu = self.mu(x)
+        var = self.var(x)
+        z = self.reparameterize(mu, var)
+        return mu, var, z
+
+
+class EncoderNetwork(Module):
+    def __init__(
+        self,
+        number_of_clusters: int = 5,
+        input_dim: int = 512,
+        latent_dim: int = 10,
+        task_encoder_layer_sizes: Optional[tuple] = (250, 150, 100),
+        latent_encoder_layer_sizes: Optional[tuple] = (50, 25, 15),
+        **kwargs
+    ):
+        super().__init__()
+        self.task_encoder = MLP(
+            layer_sizes=task_encoder_layer_sizes,
+            input_size=input_dim,
+            output_size=number_of_clusters,
+        )
+
+        self.latent_encoder = nn.Sequential(
+            MLP(
+                layer_sizes=latent_encoder_layer_sizes,
+                input_size=number_of_clusters + input_dim,
+                output_size=latent_dim,
+            ),
+            Gaussian(latent_dim, latent_dim),
+        )
+
+    def forward(self, x, tau: float = 1, hard: bool = True) -> Dict:
+        """
+
+        Args:
+            x: inputs to cluster
+            tau: float, non-negative scalar temperature for softmax
+            hard:  if True, the returned samples will be discretized as one-hot vectors,
+             but will be differentiated as if it is the soft sample in autograd
+
+        Returns:
+
+        """
+        logits = self.task_encoder(x)
+        probs = nn.functional.softmax(logits, dim=-1)
+        y = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+        mu, var, z = self.latent_encoder(y)
+
+        output = {
+            "mean": mu,
+            "variance": var,
+            "latent": z,
+            "cluster_prob": probs,
+            "cluster": y,
+        }
+        return output
+
+
+class DecoderNetwork(Module):
+    def __init__(
+        self,
+        number_of_clusters: int = 5,
+        input_dim: int = 512,
+        latent_dim: int = 10,
+        latent_decoder_layer_sizes: Optional[tuple] = (50, 25, 15),
+        input_decoder_layter_sizes: Optional[tuple] = (50, 25, 15),
+        **kwargs
+    ):
+        super().__init__()
+
+        self.latent_mu = MLP(
+            layer_sizes=latent_decoder_layer_sizes,
+            input_size=number_of_clusters,
+            output_size=latent_dim,
+        )
+        self.latent_var = nn.Sequential(
+            MLP(
+                layer_sizes=latent_decoder_layer_sizes,
+                input_size=number_of_clusters,
+                output_size=latent_dim,
+            ),
+            nn.Softplus(),
+        )
+
+        self.input_decoder = MLP(
+            layer_sizes=input_decoder_layter_sizes,
+            input_size=latent_dim,
+            output_size=input_dim,
+        )
+
+    def latent_distribution(self, y):
+        z_mu = self.latent_mu(y)
+        z_var = self.latent_var(y)
+        return z_mu, z_var
+
+    def input_generator(self, z):
+        input = self.input_decoder(z)
+        return input
+
+    def forward(self, z, y) -> Dict:
+        """
+
+        Args:
+            z: torch.Tensor, Latent state
+            y: torch.Tensor, cluster label
+
+        Returns:
+            output: Dict,
+        """
+
+        z_mu, z_var = self.latent_distribution(y)
+
+        reconstructed_input = self.input_generator(z)
+        output = {
+            "cluster_latent_mean": z_mu,
+            "cluster_latent_var": z_var,
+            "reconstruction": reconstructed_input,
+        }
+        return output
 
 
 # TODO(eamematsro): Add a feedforward multicontext network

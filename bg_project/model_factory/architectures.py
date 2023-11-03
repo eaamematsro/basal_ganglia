@@ -9,17 +9,24 @@ import torch.nn as nn
 from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
-from .networks import MLP, MultiHeadMLP, RNN, ThalamicRNN
+from torch.distributions.multivariate_normal import MultivariateNormal
+from .networks import (
+    MLP,
+    MultiHeadMLP,
+    RNN,
+    ThalamicRNN,
+    EncoderNetwork,
+    DecoderNetwork,
+)
 
 
 class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
-    def __init__(
-        self, task: Optional[str] = None, **kwargs
-    ):
+    def __init__(self, task: Optional[str] = None, **kwargs):
         super(BaseArchitecture, self).__init__()
         self.network = None
         self.save_path = None
         self.text_path = None
+        self.folder_path = None
         self.task = task
         self.output_names = None
         self.set_save_path()
@@ -62,11 +69,12 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
             if x.is_dir() and re.search(reg_exp, str(x.stem))
         ]
         folder_path = date_save_path / f"model_{len(files)}"
-        folder_path.mkdir(exist_ok=True)
+        self.folder_path = folder_path
         self.save_path = folder_path / "model.pickle"
         self.text_path = folder_path / "params.json"
 
     def save_model(self, **kwargs):
+        self.folder_path.mkdir(exist_ok=True)
         data_dict = {"network": self, **kwargs}
         with open(self.save_path, "wb") as handle:
             pickle.dump(data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -197,7 +205,7 @@ class RNNStaticBG(BaseArchitecture):
         input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
         dt: float = 0.05,
         tau: float = 0.15,
-        bg_layer_sizes: Optional[Tuple[int, ...]] = None,
+        bg_layer_sizes: Optional[Tuple[int, ...]] = (25, 15, 10),
         bg_nfn: Optional[nn.Module] = None,
         bg_input_size: Optional[int] = 1,
         include_bias: bool = True,
@@ -324,6 +332,61 @@ class RNNFeedbackBG(BaseArchitecture):
             "An RNN who's weights are dynamically multiplied by the outputs of a BG module"
             "that receives inputs from the RNN itself."
         )
+
+
+class GMMVAE(BaseArchitecture):
+    def __init__(
+        self,
+        number_of_clusters: int = 5,
+        input_dim: int = 512,
+        latent_dim: int = 10,
+        task_encoder_layer_sizes: Optional[tuple] = (250, 150, 100),
+        latent_encoder_layer_sizes: Optional[tuple] = (50, 25, 15),
+        latent_decoder_layer_sizes: Optional[tuple] = (50, 25, 15),
+        input_decoder_layter_sizes: Optional[tuple] = (50, 25, 15),
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.params = {
+            "latent_dimensionality": latent_dim,
+            "input_dimensionality": input_dim,
+            "number_of_clusters": number_of_clusters,
+            "network": type(self).__name__,
+        }
+
+        self.encoder = EncoderNetwork(
+            number_of_clusters=number_of_clusters,
+            input_dim=input_dim,
+            latent_dim=latent_dim,
+            task_encoder_layer_sizes=task_encoder_layer_sizes,
+            latent_encoder_layer_sizes=latent_encoder_layer_sizes,
+        )
+
+        self.decoder = DecoderNetwork(
+            number_of_clusters=number_of_clusters,
+            input_dim=input_dim,
+            latent_dim=latent_dim,
+            latent_decoder_layer_sizes=latent_decoder_layer_sizes,
+            input_decoder_layter_sizes=input_decoder_layter_sizes,
+        )
+
+    def forward(
+        self, x, tau: float = 1, hard: bool = False, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        x = x.view(x.size(0), -1)
+
+        encoder_output = self.encoder(x)
+        latent_state, clusters = encoder_output["latent"], encoder_output["cluster"]
+
+        decoder_output = self.decoder(latent_state, clusters)
+
+        output = {**decoder_output, **encoder_output}
+        return output
+
+    @classmethod
+    def construct_gaussian(cls, mu: torch.Tensor, var: torch.Tensor):
+        normal_distribution = MultivariateNormal(mu, torch.diag(var))
+        return normal_distribution
 
 
 NETWORKS = {
