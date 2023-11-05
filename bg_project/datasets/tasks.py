@@ -491,9 +491,17 @@ class MultiGainPacMan(Task):
         batch_size = contexts.shape[1]
 
         position_store = torch.zeros(
+            self.duration,
+            batch_size,
+            1,
+            device=self.network.Wout.device,
+            requires_grad=False,
+        )
+        force_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
         )
-        position = torch.zeros(batch_size, 1, device=self.network.Wout.device)
+        # position = torch.zeros(batch_size, 1, device=self.network.Wout.device)
+        position = targets[0].unsqueeze(1)
         velocity = torch.zeros(batch_size, 1, device=self.network.Wout.device)
         bg_inputs = {"context": contexts.T}
         self.network.rnn.reset_state(batch_size)
@@ -508,7 +516,7 @@ class MultiGainPacMan(Task):
                 "target_height": targets[ti][:, None],
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
-
+            force_store[ti] = outputs["r_act"] @ self.network.Wout
             # acceleration = (
             #     (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
             #     - velocity * contexts[1][:, None]
@@ -517,9 +525,12 @@ class MultiGainPacMan(Task):
             acceleration = (outputs["r_act"] @ self.network.Wout) / contexts[
                 0
             ].unsqueeze(1) - contexts[1].unsqueeze(1) * velocity
-            velocity = velocity + self.dt * acceleration
+            velocity = velocity + self.dt / self.network.rnn.tau * acceleration
             position_store[ti] = torch.clip(
-                position + self.dt * contexts[2].unsqueeze(1) * velocity, -max_pos, max_pos
+                position
+                + self.dt / self.network.rnn.tau * contexts[2].unsqueeze(1) * velocity,
+                -max_pos,
+                max_pos,
             )
             for key in self.penalize_activity:
                 if energies[key] is None:
@@ -528,16 +539,27 @@ class MultiGainPacMan(Task):
                     )
                 energies[key][ti] = outputs[key]
 
-        return position_store, energies
+        return position_store.detach(), force_store, energies
 
     def compute_loss(
         self,
         target: torch.Tensor,
         model_output: torch.Tensor,
         network_energy: Optional[dict] = None,
+        optimal_forces: Optional[torch.Tensor] = None,
+        use_optimal: bool = False,
     ) -> dict:
-        # pdb.set_trace()
-        trajectory_loss = (torch.pow(model_output - target, 2).sum(axis=0)).mean()
+        if optimal_forces is None:
+            use_optimal = False
+        if use_optimal:
+            trajectory_loss = torch.log(
+                ((optimal_forces - model_output[:-1].squeeze()) ** 2).sum(axis=0) ** 1
+                / 2
+            ).mean()
+        else:
+            trajectory_loss = torch.log(
+                torch.pow(model_output - target, 2).sum(axis=0) ** 1 / 2
+            ).mean()
         # trajectory_loss = nn.functional.mse_loss(model_output.T, target.T)
         output_weight_loss = self.output_weight_penalty * torch.linalg.norm(
             self.network.Wout
@@ -561,11 +583,37 @@ class MultiGainPacMan(Task):
             pdb.set_trace()
         return loss
 
+    def get_optimal_forces(
+        self,
+        targets,
+        contexts,
+        positions,
+    ):
+        velocities = torch.diff(positions.squeeze(), dim=0)
+        errors = (targets - positions.squeeze())[:-1]
+        optimal_force = (
+            contexts[0]
+            * self.network.rnn.tau
+            / self.dt
+            * (
+                errors / (contexts[2] * self.dt / self.network.rnn.tau)
+                - (1 - self.dt / self.network.rnn.tau * contexts[1]) * velocities
+            )
+        )
+        return optimal_force
+
     def training_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
-        positions, energies = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T, positions.squeeze(), energies)
+        positions, forces, energies = self.forward(x.T, y.T)
+        optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
+        loss = self.compute_loss(
+            y.T,
+            forces.squeeze(),
+            energies,
+            optimal_forces=optimal_paths,
+            use_optimal=True,
+        )
         self.log(
             "train_loss",
             loss["total"],
@@ -579,8 +627,15 @@ class MultiGainPacMan(Task):
     def validation_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
-        positions, energies = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T, positions.squeeze(), energies)
+        positions, forces, energies = self.forward(x.T, y.T)
+        optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
+        loss = self.compute_loss(
+            y.T,
+            forces.squeeze(),
+            energies,
+            optimal_forces=optimal_paths,
+            use_optimal=True,
+        )
         self.log(
             "val_loss",
             loss["total"],
@@ -595,8 +650,15 @@ class MultiGainPacMan(Task):
     def test_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
-        positions, energies = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T.squeeze(), positions.squeeze(), energies)
+        positions, forces, energies = self.forward(x.T, y.T)
+        optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
+        loss = self.compute_loss(
+            y.T,
+            forces.squeeze(),
+            energies,
+            optimal_forces=optimal_paths,
+            use_optimal=True,
+        )
         self.log(
             "test_loss",
             loss["total"],
@@ -612,7 +674,7 @@ class MultiGainPacMan(Task):
     def evaluate_training(self, batch, original_network: Optional[Task] = None):
         x, y = batch
         with torch.no_grad():
-            positions, energies = self.forward(x.T, y.T)
+            positions, _, energies = self.forward(x.T, y.T)
             bg_outputs = self.network.bg(x)
             if original_network is not None:
                 positions_initial, _ = original_network(x.T, y.T)
@@ -660,7 +722,7 @@ class MultiGainPacMan(Task):
         x[:] = torchify(np.asarray(new_context))
 
         with torch.no_grad():
-            positions, energies = self.forward(x.T, y.T)
+            positions, _, energies = self.forward(x.T, y.T)
 
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
