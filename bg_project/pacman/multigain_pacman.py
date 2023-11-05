@@ -67,8 +67,8 @@ if __name__ == "__main__":
         trainer = Trainer(
             max_epochs=300,
             gradient_clip_val=10,
-            accelerator="gpu",
-            devices=4,
+            accelerator="cpu",
+            devices=1,
             default_root_dir=save_path,
         )
 

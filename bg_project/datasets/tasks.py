@@ -509,13 +509,17 @@ class MultiGainPacMan(Task):
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
 
-            acceleration = (
-                (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
-                - velocity * contexts[1][:, None]
-            ) / (contexts[0][:, None])
+            # acceleration = (
+            #     (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
+            #     - velocity * contexts[1][:, None]
+            # ) / (contexts[0][:, None])
+
+            acceleration = (outputs["r_act"] @ self.network.Wout) / contexts[
+                0
+            ].unsqueeze(1) - contexts[1].unsqueeze(1) * velocity
             velocity = velocity + self.dt * acceleration
             position_store[ti] = torch.clip(
-                position + self.dt * velocity, -max_pos, max_pos
+                position + self.dt * contexts[2].unsqueeze(1) * velocity, -max_pos, max_pos
             )
             for key in self.penalize_activity:
                 if energies[key] is None:
