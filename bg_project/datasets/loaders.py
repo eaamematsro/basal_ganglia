@@ -107,8 +107,8 @@ class PacmanDataset(Dataset):
 
     def __init__(
         self,
-        trial_duration: int = 150,
-        sigma_fraction: float = .05,
+        trial_duration: int = 500,
+        sigma_fraction: float = 0.025,
         n_samples: int = 100,
         masses: Optional[Sequence] = None,
         viscosity: Optional[Sequence] = None,

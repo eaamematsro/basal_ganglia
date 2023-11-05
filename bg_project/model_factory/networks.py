@@ -227,8 +227,8 @@ class ThalamicRNN(Module):
             out += input_value @ self.I[input_name]
 
         r_mat = torch.diag_embed(r_thalamic)
-        bg_tensor = torch.matmul(torch.matmul(r_mat, self.V), self.U)
-        rec_input = torch.matmul(bg_tensor, self.r.T.unsqueeze(2))
+        bg_tensor = torch.matmul(self.U, torch.matmul(r_mat, self.V))
+        rec_input = torch.matmul(bg_tensor, self.r.unsqueeze(2)).squeeze()
 
         # rec_input = torch.einsum(
         #     "ij, kj, jl, ki -> kl", self.U, r_thalamic, self.V, self.r

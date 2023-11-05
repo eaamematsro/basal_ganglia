@@ -8,6 +8,7 @@ import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from sklearn.decomposition import PCA
 from model_factory.architectures import NETWORKS, BaseArchitecture
 from typing import Optional, Any, Tuple, Callable
 from scipy.ndimage import gaussian_filter1d
@@ -17,9 +18,9 @@ from pathlib import Path
 
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
-    def __init__(self, network: str,
-                 lr: float = 1e-3, task: Optional[str] = None,
-                 **kwargs):
+    def __init__(
+        self, network: str, lr: float = 1e-3, task: Optional[str] = None, **kwargs
+    ):
         super(Task, self).__init__()
         self.network = NETWORKS[network](task=task, **kwargs)
         self.type = network
@@ -29,15 +30,18 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
 
     def configure_optimizers(self):
         """"""
-        self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3, lr=self.lr)
+        self.optimizer = torch.optim.Adam(
+            self.network.parameters(), weight_decay=1e-3, lr=self.lr
+        )
         self.lr_scheduler = {
-            'scheduler': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                self.optimizer, 50,T_mult=2
+            "scheduler": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                self.optimizer, 50, T_mult=2
             ),
-            'name': "lr_rate",
+            "name": "lr_rate",
         }
         return [self.optimizer], [self.lr_scheduler]
         # return self.optimizer
+
     @abc.abstractmethod
     def compute_loss(self, **kwargs):
         """"""
@@ -431,7 +435,7 @@ class MultiGainPacMan(Task):
     def __init__(
         self,
         network: Optional[str] = "RNNFeedbackBG",
-        number_of_neurons: int = 150,
+        number_of_neurons: int = 250,
         duration: int = 150,
         nbg: int = 10,
         ncontext: int = 3,
@@ -444,9 +448,11 @@ class MultiGainPacMan(Task):
             apply_energy_penalty = ()
 
         kwargs["ncontext"] = ncontext
-        rnn_input_source = {"current_height": (1, True),
-                            "target_derivative": (1, True),
-                            "target_height": (1, True)}
+        rnn_input_source = {
+            "current_height": (1, True),
+            "target_derivative": (1, True),
+            "target_height": (1, True),
+        }
 
         super(MultiGainPacMan, self).__init__(
             network=network,
@@ -473,8 +479,11 @@ class MultiGainPacMan(Task):
         self.output_weight_penalty = output_weight_penalty
 
     def forward(
-        self, contexts: torch.Tensor, targets: torch.Tensor, max_pos: float = 10,
-            **kwargs
+        self,
+        contexts: torch.Tensor,
+        targets: torch.Tensor,
+        max_pos: float = 10,
+        **kwargs,
     ) -> Any:
         """"""
         if contexts.ndim == 1:
@@ -496,7 +505,7 @@ class MultiGainPacMan(Task):
             rnn_input = {
                 "current_height": position_store[ti - 1].clone(),
                 "target_derivative": ((targets[ti] - targets[ti - 1]))[:, None],
-                "target_height": targets[ti][:, None]
+                "target_height": targets[ti][:, None],
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
 
@@ -518,10 +527,13 @@ class MultiGainPacMan(Task):
         return position_store, energies
 
     def compute_loss(
-        self, target: torch.Tensor, model_output: torch.Tensor, network_energy: Optional[dict] = None
+        self,
+        target: torch.Tensor,
+        model_output: torch.Tensor,
+        network_energy: Optional[dict] = None,
     ) -> dict:
         # pdb.set_trace()
-        trajectory_loss = torch.log(torch.pow(model_output - target, 2).sum(axis=0)).mean()
+        trajectory_loss = (torch.pow(model_output - target, 2).sum(axis=0)).mean()
         # trajectory_loss = nn.functional.mse_loss(model_output.T, target.T)
         output_weight_loss = self.output_weight_penalty * torch.linalg.norm(
             self.network.Wout
@@ -606,25 +618,37 @@ class MultiGainPacMan(Task):
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
         plt.figure()
-        plt.plot(targets[0], label='Target')
-        plt.plot(outputs[0], label='Trained Model Output')
+        plt.plot(targets[0], label="Target")
+        plt.plot(outputs[0], label="Trained Model Output")
         if positions_initial is not None:
-            plt.plot(outputs_initial[0], label='Original Model Output', ls='--')
+            plt.plot(outputs_initial[0], label="Original Model Output", ls="--")
         plt.legend()
         fig, ax = plt.subplots(1, 2, figsize=(12, 8))
-        ax[0].set_title('Contexts')
-        g = ax[0].imshow(x, aspect='auto')
-        plt.colorbar(g, ax=ax[0], label='Value')
-        ax[0].set_xlabel('Context')
-        ax[0].set_xticks(ticks=range(3), labels=['Mass', 'Viscositiy', 'Polarity'], rotation=45)
-        ax[0].set_ylabel('Trial')
-        ax[1].set_title('Basal Gangial Output')
-        g = ax[1].imshow(bg_outputs, aspect='auto')
-        plt.colorbar(g, ax=ax[1], label='Neural activity')
-        ax[1].set_xlabel('Neuron')
-        ax[1].set_ylabel('Trial')
-        plt.pause(.1)
-
+        ax[0].set_title("Contexts")
+        g = ax[0].imshow(x, aspect="auto")
+        plt.colorbar(g, ax=ax[0], label="Value")
+        ax[0].set_xlabel("Context")
+        ax[0].set_xticks(
+            ticks=range(3), labels=["Mass", "Viscositiy", "Polarity"], rotation=45
+        )
+        ax[0].set_ylabel("Trial")
+        ax[1].set_title("Basal Gangial Output")
+        g = ax[1].imshow(bg_outputs, aspect="auto")
+        plt.colorbar(g, ax=ax[1], label="Neural activity")
+        ax[1].set_xlabel("Neuron")
+        ax[1].set_ylabel("Trial")
+        plt.pause(0.1)
+        bg_pca = PCA().fit_transform(bg_outputs.detach().numpy())
+        min_vals, _ = x.min(axis=0)
+        new_x = x - min_vals
+        max_x, _ = new_x.max(axis=0)
+        normed_x = (new_x / max_x).detach().numpy()
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8), subplot_kw={"projection": "3d"})
+        ax.scatter(bg_pca[:, 0], bg_pca[:, 1], bg_pca[:, 2], c=normed_x)
+        ax.set_xlabel("PC1")
+        ax.set_ylabel("PC2")
+        ax.set_zlabel("PC3")
+        plt.pause(0.1)
 
     def change_context(self, batch, new_context: Tuple = (1, 0, -1)):
 
@@ -637,10 +661,10 @@ class MultiGainPacMan(Task):
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
         plt.figure()
-        plt.plot(targets[0], label='Target')
-        plt.plot(outputs[0], label='Model Output')
+        plt.plot(targets[0], label="Target")
+        plt.plot(outputs[0], label="Model Output")
         plt.legend()
-        plt.pause(.1)
+        plt.pause(0.1)
 
 
 def set_results_path(task_name: str):
