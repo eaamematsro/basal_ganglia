@@ -42,6 +42,20 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
         return [self.optimizer], [self.lr_scheduler]
         # return self.optimizer
 
+    def add_noise_to_parameters(self, scale: float = 0.01):
+        """
+
+        Args:
+            scale:
+
+        Returns:
+
+        """
+        for param in self.parameters():
+            if param.requires_grad:
+                std = param.data.std()
+                param.data = param.data + scale * std * torch.randn_like(param.data)
+
     @abc.abstractmethod
     def compute_loss(self, **kwargs):
         """"""
@@ -539,7 +553,7 @@ class MultiGainPacMan(Task):
                     )
                 energies[key][ti] = outputs[key]
 
-        return position_store.detach(), force_store, energies
+        return position_store, force_store, energies
 
     def compute_loss(
         self,
@@ -547,7 +561,7 @@ class MultiGainPacMan(Task):
         model_output: torch.Tensor,
         network_energy: Optional[dict] = None,
         optimal_forces: Optional[torch.Tensor] = None,
-        use_optimal: bool = False,
+        use_optimal: bool = True,
     ) -> dict:
         if optimal_forces is None:
             use_optimal = False
@@ -555,10 +569,11 @@ class MultiGainPacMan(Task):
             trajectory_loss = torch.log(
                 ((optimal_forces - model_output[:-1].squeeze()) ** 2).sum(axis=0) ** 1
                 / 2
+                + 1
             ).mean()
         else:
             trajectory_loss = torch.log(
-                torch.pow(model_output - target, 2).sum(axis=0) ** 1 / 2
+                torch.pow(model_output - target, 2).sum(axis=0) ** 1 / 2 + 1
             ).mean()
         # trajectory_loss = nn.functional.mse_loss(model_output.T, target.T)
         output_weight_loss = self.output_weight_penalty * torch.linalg.norm(
@@ -581,6 +596,12 @@ class MultiGainPacMan(Task):
         }
         if torch.isnan(total_loss) or torch.isinf(total_loss):
             pdb.set_trace()
+            loss = {
+                "energy": None,
+                "trajectory": None,
+                "output_weight": None,
+                "total": None,
+            }
         return loss
 
     def get_optimal_forces(
@@ -604,19 +625,27 @@ class MultiGainPacMan(Task):
 
     def training_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
+        # self.add_noise_to_parameters()
         x, y = batch
-        positions, forces, energies = self.forward(x.T, y.T)
+        positions, forces, energies = self.forward(x.T, y.T, noise_scale=0.25)
         optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
         loss = self.compute_loss(
             y.T,
             forces.squeeze(),
             energies,
             optimal_forces=optimal_paths,
-            use_optimal=True,
         )
         self.log(
             "train_loss",
             loss["total"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        self.log(
+            "energy_loss",
+            loss["energy"],
             prog_bar=True,
             on_epoch=True,
             on_step=False,
@@ -627,14 +656,13 @@ class MultiGainPacMan(Task):
     def validation_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
-        positions, forces, energies = self.forward(x.T, y.T)
+        positions, forces, energies = self.forward(x.T, y.T, noise_scale=0)
         optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
         loss = self.compute_loss(
             y.T,
             forces.squeeze(),
             energies,
             optimal_forces=optimal_paths,
-            use_optimal=True,
         )
         self.log(
             "val_loss",
@@ -650,14 +678,19 @@ class MultiGainPacMan(Task):
     def test_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
-        positions, forces, energies = self.forward(x.T, y.T)
-        optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
+        positions, forces, energies = self.forward(x.T, y.T, noise_scale=0)
+        optimal_paths = self.get_optimal_forces(y.T.squeeze(), x.T, positions)
+        # loss = self.compute_loss(
+        #     y.T,
+        #     forces.T,
+        #     energies,
+        #     optimal_forces=optimal_paths,
+        # )
         loss = self.compute_loss(
-            y.T,
+            y.T.squeeze(),
             forces.squeeze(),
             energies,
             optimal_forces=optimal_paths,
-            use_optimal=True,
         )
         self.log(
             "test_loss",
@@ -674,10 +707,10 @@ class MultiGainPacMan(Task):
     def evaluate_training(self, batch, original_network: Optional[Task] = None):
         x, y = batch
         with torch.no_grad():
-            positions, _, energies = self.forward(x.T, y.T)
+            positions, _, energies = self.forward(x.T, y.T, noise_scale=0)
             bg_outputs = self.network.bg(x)
             if original_network is not None:
-                positions_initial, _ = original_network(x.T, y.T)
+                positions_initial, _, _ = original_network(x.T, y.T, noise_scale=0)
                 outputs_initial = positions_initial.squeeze().detach().cpu().numpy().T
             else:
                 positions_initial = None

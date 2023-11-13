@@ -208,7 +208,7 @@ class RNNStaticBG(BaseArchitecture):
         bg_layer_sizes: Optional[Tuple[int, ...]] = (25, 15, 10),
         bg_nfn: Optional[nn.Module] = None,
         bg_input_size: Optional[int] = 1,
-        include_bias: bool = True,
+        include_bias: bool = False,
         **kwargs,
     ):
         super(RNNStaticBG, self).__init__(**kwargs)

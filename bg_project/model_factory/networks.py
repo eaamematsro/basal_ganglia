@@ -8,6 +8,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 from .noise_models import GaussianNoise, GaussianSignalDependentNoise
 from .factory_utils import torchify
 from typing import Callable, Optional, Dict, List, Tuple
+from statsmodels.stats.correlation_tools import cov_nearest
 
 
 class VarianceTypes(Enum):
@@ -100,6 +101,7 @@ class RNN(Module):
         inputs: Dict[str, torch.Tensor],
         noise_scale: float = 1,
         validate_inputs: bool = False,
+        max_val: float = 1e3,
     ):
         if validate_inputs:
             input_names = set(list(inputs.keys()))
@@ -109,8 +111,18 @@ class RNN(Module):
             # print(input_name, input_value.shape, self.I[input_name].shape)
             out += input_value @ self.I[input_name]
 
-        x = self.x + self.dt / self.tau * (
-            self.noise_model(-self.x + self.r @ self.J + self.B + out, noise_scale)
+        x = torch.clip(
+            self.x
+            + self.dt
+            / self.tau
+            * (
+                self.noise_model(
+                    -self.x + self.r @ self.J + self.B + out,
+                    noise_scale,
+                )
+            ),
+            -max_val,
+            max_val,
         )
 
         r = self.nonlinearity(x)
@@ -166,18 +178,36 @@ class ThalamicRNN(Module):
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
-        self.U = nn.Parameter(
-            torchify(np.random.randn(nneurons, nbg) / np.sqrt(nbg)),
-            requires_grad=True,
-        )
-        self.V = nn.Parameter(
-            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
-            requires_grad=False,
-        )
+        # self.U = nn.Parameter(
+        #     torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
+        #     requires_grad=False,
+        # )
+        # self.V = nn.Parameter(
+        #     torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
+        #     requires_grad=False,
+        # )
+        U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
+        self.U = nn.Parameter(torchify(U), requires_grad=True)
+        self.V = nn.Parameter(torchify(V), requires_grad=False)
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
         self.noise_model = noise_model
+
+    def generate_bg_weights(
+        self, nneurons: int = 100, overlap: float = 0.5, rank: int = 5
+    ):
+        sigmas = np.eye(2 * rank)
+        sig_vals = 0.1 * np.random.randn(rank, rank)
+        np.fill_diagonal(sig_vals, overlap)
+        sigmas[rank:, :rank] = sig_vals
+        sigmas[:rank, rank:] = sig_vals.T
+        cov = cov_nearest(sigmas)
+        L = np.linalg.cholesky(cov)
+        samples = L @ np.random.randn(2 * rank, nneurons)
+        U = samples[:rank].T * 1 / np.sqrt(nneurons)
+        V = samples[rank:] * 1 / np.sqrt(nneurons)
+        return U, V
 
     def reconfigure_u_v(
         self, g1: float = 0, g2: float = 0, requires_grad: bool = False
@@ -197,7 +227,7 @@ class ThalamicRNN(Module):
         self.U = nn.Parameter(
             torchify(
                 (np.sqrt(1 - g1**2)) * U[:, :bg_rank]
-                + g1**2 * np.random.randn(J.shape[0], bg_rank) / np.sqrt(bg_rank)
+                + g1**2 * np.random.randn(J.shape[0], bg_rank) / np.sqrt(J.shape[0])
             ),
             requires_grad=(requires_grad if requires_grad else u_grad),
         )
@@ -236,7 +266,8 @@ class ThalamicRNN(Module):
 
         x = self.x + self.dt / self.tau * (
             self.noise_model(
-                -self.x + self.r @ self.J + rec_input + self.B + out, noise_scale
+                -self.x + self.r @ self.J + rec_input + self.B + out,
+                noise_scale,
             )
         )
 
