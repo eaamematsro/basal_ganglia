@@ -552,6 +552,30 @@ class DecoderNetwork(Module):
         return output
 
 
+class GaussianMixtureModel(Module):
+    def __init__(self, number_of_clusters: int = 5, latent_dimension: int = 10):
+        super().__init__()
+
+        self.means = nn.Parameter(
+            torchify(np.random.randn(number_of_clusters, latent_dimension))
+        )
+        self.cov = nn.Parameter(
+            torchify(
+                np.random.randn(number_of_clusters, latent_dimension)
+                / np.sqrt(latent_dimension)
+            )
+        )
+
+    def forward(self, cluster: torch.Tensor):
+        nonlinearity = nn.ReLU()
+        l_cluster = cluster.long()
+        z = self.means[l_cluster] + (
+            torch.sqrt(nonlinearity(self.cov[l_cluster]))
+            * torch.randn(cluster.shape[0], self.means.shape[1])
+        )
+        return z
+
+
 # TODO(eamematsro): Add a feedforward multicontext network
 
 

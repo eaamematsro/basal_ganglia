@@ -2,6 +2,8 @@ import abc
 import pdb
 import os
 import re
+from abc import ABC
+
 import torch
 import pickle
 import json
@@ -17,6 +19,7 @@ from .networks import (
     ThalamicRNN,
     EncoderNetwork,
     DecoderNetwork,
+    GaussianMixtureModel,
 )
 
 
@@ -387,6 +390,79 @@ class GMMVAE(BaseArchitecture):
     def construct_gaussian(cls, mu: torch.Tensor, var: torch.Tensor):
         normal_distribution = MultivariateNormal(mu, torch.diag(var))
         return normal_distribution
+
+
+class HRLNetwork(BaseArchitecture, ABC):
+    def __init__(
+        self,
+        latent_dim: int = 10,
+        n_clusters: int = 10,
+        layer_sizes: Optional[Tuple[int, ...]] = None,
+        non_linearity: Optional[nn.Module] = None,
+        observation_size: Optional[int] = 150,
+        include_bias: bool = True,
+        noise_model: Optional[nn.Module] = None,
+        action_dim: int = 2,
+        action_layer_sizes: Optional[Tuple[int, ...]] = None,
+        observation_layer_sizes: Optional[Tuple[int, ...]] = None,
+    ):
+        super().__init__()
+
+        # Defining policy functions
+        self.pi_k_o = MLP(
+            output_size=n_clusters,
+            layer_sizes=layer_sizes,
+            noise_model=noise_model,
+            non_linearity=non_linearity,
+            input_size=observation_size,
+            include_bias=include_bias,
+        )
+
+        self.pi_z_k = GaussianMixtureModel(
+            number_of_clusters=n_clusters,
+            latent_dimension=latent_dim,
+        )
+
+        self.q_k_a_o = MLP(
+            input_size=action_dim + observation_size,
+            layer_sizes=observation_layer_sizes,
+            noise_model=noise_model,
+            non_linearity=non_linearity,
+            include_bias=include_bias,
+            output_size=n_clusters,
+        )
+
+        self.pi_a_o_z = MultiHeadMLP(
+            independent_layers={
+                "observations": ((25, 10), observation_size),
+                "latents": ((25, 10), latent_dim),
+            },
+            shared_layer_sizes=action_layer_sizes,
+            output_size=action_dim,
+        )
+
+    def forward(self, observation: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
+
+        cluster_logits = self.pi_k_o(observation)
+        clusters = nn.functional.gumbel_softmax(cluster_logits)
+        cluster_ids = clusters.argmax(dim=1)
+        latents = self.pi_z_k(cluster_ids)
+        inputs = {"observations": observation, "latents": latents}
+        actions = self.pi_a_o_z(inputs=inputs)
+        pdb.set_trace()
+        outputs = {'actions': actions, 'cluster_ids': cluster_ids, 'latents': latents,
+                   'cluster_probs': cluster_logits}
+        return actions
+
+    def description(
+        self,
+    ):
+        """"""
+
+    def set_outputs(self):
+        """"""
+
+        self.output_names = ["actions", "cluster_ids", "latents", "cluster_probs"]
 
 
 NETWORKS = {

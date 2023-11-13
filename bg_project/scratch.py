@@ -1,14 +1,10 @@
 import torch
+import numpy as np
+from model_factory.factory_utils import torchify
+from model_factory.architectures import HRLNetwork
 
-rthal = torch.randn((1, 10))
-U = torch.randn((50, 10))
-V = torch.randn((10, 50))
-r = torch.randn((1, 50))
+observation_size, batch_size, latent_dim = 5, 50, 10
 
-out_1 = r @ U @ torch.diag(rthal[0]) @ V
-
-#
-# J2 = torch.einsum('ij, kj, jl -> kil', U, rthal, V)
-# out_2 = torch.einsum('kil, ki -> kl', J2, r)
-out_3 = torch.einsum("ij, kj, jl, ki -> kl", U, rthal, V, r)
-torch.isclose(out_1, out_3).all()
+model = HRLNetwork(observation_size=observation_size, latent_dim=latent_dim)
+observations = torchify(np.random.randn(batch_size, observation_size))
+model(observations)
