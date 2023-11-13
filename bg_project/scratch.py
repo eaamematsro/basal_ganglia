@@ -1,10 +1,11 @@
-import torch
-import numpy as np
-from model_factory.factory_utils import torchify
-from model_factory.architectures import HRLNetwork
+import gymnasium as gym
+env = gym.make("LunarLander-v2", render_mode="human")
+observation, info = env.reset(seed=42)
+for _ in range(1000):
+   action = env.action_space.sample()  # this is where you would insert your policy
+   observation, reward, terminated, truncated, info = env.step(action)
 
-observation_size, batch_size, latent_dim = 5, 50, 10
+   if terminated or truncated:
+      observation, info = env.reset()
 
-model = HRLNetwork(observation_size=observation_size, latent_dim=latent_dim)
-observations = torchify(np.random.randn(batch_size, observation_size))
-model(observations)
+env.close()

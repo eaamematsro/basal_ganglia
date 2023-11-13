@@ -450,8 +450,12 @@ class HRLNetwork(BaseArchitecture, ABC):
         inputs = {"observations": observation, "latents": latents}
         actions = self.pi_a_o_z(inputs=inputs)
         pdb.set_trace()
-        outputs = {'actions': actions, 'cluster_ids': cluster_ids, 'latents': latents,
-                   'cluster_probs': cluster_logits}
+        outputs = {
+            "actions": actions,
+            "cluster_ids": cluster_ids,
+            "latents": latents,
+            "cluster_probs": cluster_logits,
+        }
         return actions
 
     def description(
