@@ -337,3 +337,16 @@ class GridWorld(PyGame):
             pygame.display.update()  # update display surface
             self.clock.tick(self.fps)
         self.close()
+
+
+class MultiWorldGridWorld(GridWorld):
+    def __init__(self, x_divisions: int = 2, y_divisions: int = 1,
+                 **kwargs):
+        super().__init__(**kwargs)
+
+        n_divs = x_divisions * y_divisions
+
+        self.betas = []
+        for div in range(n_divs):
+            beta = np.eye(2) + .5 * random.normalvariate(2, 2)
+            pdb.set_trace()
