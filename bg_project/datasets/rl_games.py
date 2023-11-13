@@ -1,6 +1,9 @@
+import pdb
+
 import pygame
 import random
 import abc
+import numpy as np
 from abc import ABC
 
 
@@ -19,6 +22,7 @@ class PyGame(metaclass=abc.ABCMeta):
         self.fps = fps
         self.clock = pygame.time.Clock()
         self.width, self.height = width, height
+        self.running = False
 
     def close(self):
         pygame.quit()
@@ -27,7 +31,6 @@ class PyGame(metaclass=abc.ABCMeta):
 class SnakeEater(PyGame):
     def __init__(self, rows: int = 30, cols: int = 40, **kwargs):
         super().__init__(title="SnakeEater", **kwargs)
-        self.running = False
         self.snake_dir = ""
         self.snake_list = []
         self.apple_pos = []
@@ -164,12 +167,8 @@ class SnakeEater(PyGame):
 
             # draw on screen
             self.display.fill((67, 70, 75))
-            pygame.draw.rect(
-                self.display, "WHITE", (0, 0, width, boundary_thickness)
-            )
-            pygame.draw.rect(
-                self.display, "WHITE", (0, 0, boundary_thickness, height)
-            )
+            pygame.draw.rect(self.display, "WHITE", (0, 0, width, boundary_thickness))
+            pygame.draw.rect(self.display, "WHITE", (0, 0, boundary_thickness, height))
             pygame.draw.rect(
                 self.display,
                 "WHITE",
@@ -213,4 +212,128 @@ class SnakeEater(PyGame):
             pygame.display.update()  # update display surface
             self.clock.tick(self.fps)
 
+        self.close()
+
+
+class GridWorld(PyGame):
+    def __init__(self, rotation: float = 90, **kwargs):
+        super().__init__(title=type(self).__name__, **kwargs)
+        self.target_pos = None
+        self.agent_pos = None
+        self.velocity = None
+        self.reached_target = False
+        self.score = 0
+        self.dist = 0
+        self.betas = 0 * np.eye(2) + 1 * np.asarray(
+            [
+                [np.cos(rotation * np.pi / 180), np.sin(rotation * np.pi / 180)],
+                [-np.sin(rotation * np.pi / 180), np.cos(rotation * np.pi / 180)],
+            ]
+        )
+        self.gain = 15
+        self.drifts = np.ones(2)
+
+    def generate_target(self):
+        if self.target_pos is None or self.reached_target:
+            x = random.randrange(3, self.width - 1)
+            y = random.randrange(3, self.height - 1)
+            self.target_pos = (x, y)
+
+    def generate_agent(self):
+        if self.target_pos is None:
+            x = random.randrange(3, self.width - 1)
+            y = random.randrange(3, self.height - 1)
+            self.agent_pos = (x, y)
+            self.velocity = (0, 0)
+
+    def detect_collision(self, boundary: int = 5):
+        if (
+            np.sqrt(
+                ((np.asarray(self.target_pos) - np.asarray(self.agent_pos)) ** 2).sum()
+            )
+            <= 15
+        ):
+            self.reached_target = True
+            self.score += 1
+        else:
+            self.reached_target = False
+
+        if self.agent_pos[0] < 0:
+            self.agent_pos = (0, self.agent_pos[1])
+        elif self.agent_pos[0] > self.width - boundary:
+            self.agent_pos = (self.width - boundary, self.agent_pos[1])
+        if self.agent_pos[1] < 0:
+            self.agent_pos = (self.agent_pos[0], 0)
+        elif self.agent_pos[1] > self.height - boundary:
+            self.agent_pos = (self.agent_pos[0], self.height - boundary)
+
+    def update_position(self):
+
+        if self.reached_target:
+            self.generate_agent()
+            self.generate_target()
+            self.reached_target = False
+
+        else:
+            x, y = self.agent_pos
+
+            pos = (
+                np.asarray([x, y])
+                + self.gain * (self.betas @ np.asarray(self.velocity))
+                + np.asarray(self.drifts)
+            )
+            self.agent_pos = (pos[0], pos[1])
+
+    def run(self):
+        self.running = True
+        font = pygame.font.SysFont("Arial_bold", 380)
+
+        while self.running:
+            self.generate_agent()
+            self.generate_target()
+            velocity = np.asarray([0, 0])
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    break
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        self.running = False
+                        break
+
+                    if event.key == pygame.K_UP:
+                        velocity += [0, -1]
+                    elif event.key == pygame.K_DOWN:
+                        velocity += [0, 1]
+                    elif event.key == pygame.K_LEFT:
+                        velocity += [-1, 0]
+                    elif event.key == pygame.K_RIGHT:
+                        velocity += [1, 0]
+            self.velocity = (velocity[0], velocity[1])
+            self.update_position()
+            self.detect_collision()
+
+            # Draw target and agent icons
+            self.display.fill((67, 70, 75))
+
+            img = font.render(str(self.score), True, (57, 60, 65))
+
+            self.display.blit(
+                img, img.get_rect(center=(20 * 15 + 15, 15 * 15 + 15)).topleft
+            )
+
+            pygame.draw.rect(
+                self.display,
+                "RED",
+                (self.target_pos[0], self.target_pos[1], 15, 15),
+            )
+
+            pygame.draw.rect(
+                self.display,
+                "White",
+                (self.agent_pos[0], self.agent_pos[1], 15, 15),
+            )
+
+            pygame.display.update()  # update display surface
+            self.clock.tick(self.fps)
         self.close()

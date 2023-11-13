@@ -173,8 +173,8 @@
 #     clock.tick(fps)
 #
 # pygame.quit()
-from datasets.rl_games import SnakeEater
+from datasets.rl_games import SnakeEater, GridWorld
 
-game = SnakeEater()
+game = GridWorld()
 
 game.run()
