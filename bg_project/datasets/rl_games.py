@@ -4,6 +4,7 @@ import pygame
 import random
 import abc
 import numpy as np
+from itertools import product
 from abc import ABC
 
 
@@ -224,14 +225,14 @@ class GridWorld(PyGame):
         self.reached_target = False
         self.score = 0
         self.dist = 0
-        self.betas = 0 * np.eye(2) + 1 * np.asarray(
+        self.betas = 1 * np.eye(2) + 1 * np.asarray(
             [
                 [np.cos(rotation * np.pi / 180), np.sin(rotation * np.pi / 180)],
                 [-np.sin(rotation * np.pi / 180), np.cos(rotation * np.pi / 180)],
             ]
         )
         self.gain = 15
-        self.drifts = np.ones(2)
+        self.drifts = np.zeros(2)
 
     def generate_target(self):
         if self.target_pos is None or self.reached_target:
@@ -340,13 +341,65 @@ class GridWorld(PyGame):
 
 
 class MultiWorldGridWorld(GridWorld):
-    def __init__(self, x_divisions: int = 2, y_divisions: int = 1,
-                 **kwargs):
+    def __init__(self, x_divisions: int = 2, y_divisions: int = 1, **kwargs):
         super().__init__(**kwargs)
 
-        n_divs = x_divisions * y_divisions
+        self.betas = {}
+        self.x_divs = x_divisions
+        if x_divisions > 1:
+            self.x_bins = np.linspace(0, self.width, x_divisions + 1)[:x_divisions]
+        else:
+            self.x_bins = None
 
-        self.betas = []
-        for div in range(n_divs):
-            beta = np.eye(2) + .5 * random.normalvariate(2, 2)
-            pdb.set_trace()
+        self.y_divs = y_divisions
+        if y_divisions > 1:
+            self.y_bins = np.linspace(0, self.height, y_divisions + 1)[:y_divisions]
+        else:
+            self.y_bins = None
+
+        for x_div, y_div in product(range(x_divisions), range(y_divisions)):
+            rotation = np.sqrt(45) * np.random.randn(0)
+            self.betas.update(
+                {
+                    (x_div, y_div): 0 * np.eye(2)
+                    + np.asarray(
+                        [
+                            [
+                                np.cos(rotation * np.pi / 180),
+                                np.sin(rotation * np.pi / 180),
+                            ],
+                            [
+                                -np.sin(rotation * np.pi / 180),
+                                np.cos(rotation * np.pi / 180),
+                            ],
+                        ]
+                    )
+                }
+            )
+
+    def update_position(self):
+
+        if self.reached_target:
+            self.generate_agent()
+            self.generate_target()
+            self.reached_target = False
+
+        else:
+            x, y = self.agent_pos
+
+            if self.x_bins is not None:
+                idx = np.digitize(x, self.x_bins) - 1
+            else:
+                idx = 0
+
+            if self.y_bins is not None:
+                idy = np.digitize(y, self.y_bins) - 1
+            else:
+                idy = 0
+
+            pos = (
+                np.asarray([x, y])
+                + self.gain * (self.betas[(idx, idy)] @ np.asarray(self.velocity))
+                + np.asarray(self.drifts)
+            )
+            self.agent_pos = (pos[0], pos[1])
