@@ -292,6 +292,8 @@ class MLP(Module):
         output_size: Optional[int] = 10,
         include_bias: bool = True,
         noise_model: Optional[nn.Module] = None,
+        return_nnl: bool = True,
+        std: Optional[float] = None,
     ):
         super(MLP, self).__init__()
         if layer_sizes is None or not (type(layer_sizes) == tuple):
@@ -302,20 +304,21 @@ class MLP(Module):
             )
 
         if non_linearity is None:
-            non_linearity = nn.Softplus()
+            non_linearity = nn.Tanh()
 
         if noise_model is None:
-            noise_model = GaussianNoise(sigma=0.25)
+            noise_model = GaussianNoise(sigma=0)
 
         modules = []
         layer_sizes = layer_sizes + (output_size,)
         previous_size = input_size
-        for size in layer_sizes:
+        for idx, size in enumerate(layer_sizes):
             modules.append(nn.Linear(previous_size, size, bias=include_bias))
-            modules.append(non_linearity)
+            if not ((idx == len(layer_sizes) - 1) and not return_nnl):
+                modules.append(non_linearity)
             previous_size = size
 
-        self.weights_init(modules)
+        self.weights_init(modules, std)
 
         self.mlp = nn.Sequential(*modules)
         self.noise_model = noise_model
@@ -331,15 +334,15 @@ class MLP(Module):
         y = self.noise_model(self.mlp(inputs), noise_scale)
         return y
 
-    def weights_init(self, modules):
+    def weights_init(self, modules, std=None):
         for m in modules:
             if isinstance(m, nn.Linear):
-                # nn.init.xavier_normal_(m.weight, gain=nn.init.calculate_gain('sigmoid'))
-                nn.init.normal_(
-                    m.weight, std=np.sqrt(1 / (m.weight.shape[0] * m.weight.shape[1]))
-                )
+                if std is not None:
+                    nn.init.orthogonal_(m.weight, std)
+                else:
+                    nn.init.orthogonal_(m.weight, 1 / np.sqrt(np.prod(m.weight.shape)))
                 if m.bias is not None:
-                    nn.init.normal_(m.bias, std=np.sqrt(1 / (m.bias.shape[0])))
+                    nn.init.constant_(m.bias, 0)
 
 
 class MultiHeadMLP(Module):
