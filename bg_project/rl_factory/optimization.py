@@ -1,4 +1,5 @@
 import pdb
+import random
 import time
 import torch
 import gymnasium
@@ -7,13 +8,44 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from model_factory.networks import MLP
+from typing import Optional
+from torch.utils.tensorboard import SummaryWriter
 
 
 class PPO(nn.Module):
-    def __init__(self, env):
+    def __init__(
+        self, summary_writer: Optional[SummaryWriter] = None, **hyperparameters
+    ):
         """"""
         super().__init__()
-        self._init_hyperparameters()
+        self._init_hyperparameters(**hyperparameters)
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+
+        env = gymnasium.vector.SyncVectorEnv(
+            [self.make_env(self.gym_id) for _ in range(self.num_envs)]
+        )
+        if summary_writer is None:
+            run_name = (
+                f"{hyperparameters['gym_id']}__{hyperparameters['exp_name']}"
+                f"__{hyperparameters['seed']}__{int(time.time())}"
+            )
+            summary_writer = SummaryWriter(f"runs/{run_name}")
+            summary_writer.add_text(
+                "Hyperparameters",
+                f"|param|value|\n|-|-\n%s"
+                % (
+                    "\n".join(
+                        [
+                            f"|{key}|{value}|"
+                            for key, value in vars(hyperparameters).items()
+                        ]
+                    )
+                ),
+            )
+        self.writer = summary_writer
+        pdb.set_trace()
         self.env = env
         self.obs_dim = np.prod(env.single_observation_space.shape)
         self.act_dim = np.prod(env.single_action_space.n)
@@ -41,27 +73,86 @@ class PPO(nn.Module):
             self.critic.parameters(), eps=1e-5, lr=self.lr_crit
         )
 
-    def _init_hyperparameters(self):
-        """"""
+    def _init_hyperparameters(
+        self,
+        actor_lr: float = 2.5e-3,
+        critic_lr: float = 1e-3,
+        gamma: float = 0.99,
+        gae_lambda: float = 0.95,
+        seed: int = 1,
+        num_envs: int = 4,
+        num_steps: int = 128,
+        num_mini_batches: int = 4,
+        num_update_epochs: int = 4,
+        alpha_entropy: float = 1e-2,
+        clip_coeff: float = 0.2,
+        max_grad_norm: float = 1.0,
+        total_time_steps: int = 25000,
+        use_gae: bool = True,
+        anneal_lr: bool = True,
+        normalize_advantage: bool = True,
+        clip_critic: bool = True,
+        gym_id: str = "CartPole-v1",
+        **kwargs,
+    ):
+        """Initializes network hyperparameters
 
-        self.lr = 2.5e-3
-        self.lr_crit = 1e-3
-        self.gamma = 0.99
-        self.gae_lambda = 0.95
-        self.num_envs = 4
-        self.num_steps = 128
-        self.batch_size = int(self.num_steps * self.num_envs)
-        self.minibatches: int = 4
-        self.update_epochs: int = 4
+        Args:
+            seed:
+            actor_lr: Actor learning rate, by default 2.5e-3.
+            critic_lr: Critic learning rate, by default 1e-3
+            gamma: Discount factor, by default 0.99
+            gae_lambda: Generalized advantage lambda coefficient, by default 0.95
+            seed: Seed used for randomization
+            num_envs: Number of parallel environments to run, by default 4
+            num_steps: Number of steps per environment, by default 128
+            num_mini_batches: Number of minibatches, by default 4
+            num_update_epochs: Number of gradient steps per rollout, by default 4
+            alpha_entropy: Weight of entropy loss, by default 0.01
+            clip_coeff: PPO clipping coefficient, by default 0.2
+            max_grad_norm: Maximum grad norm used to clip gradients, by default 1
+            total_time_steps: Number of environment steps used for training, by default 25,000
+            use_gae: A boolean flag that specifies whether to use a traditional advantage or the generalized advantage
+                by default True
+            anneal_lr: Whether to anneal the actor learning rate, by default True
+            normalize_advantage: Whether to normalize the advantages each roll out, by default True
+            clip_critic: Whether to clip the critic objective function, by default True
+            gym_id: Name of gym environment
+
+        Returns:
+
+        """
+
+        self.lr = actor_lr
+        self.lr_crit = critic_lr
+        self.gamma = gamma
+        self.gae_lambda = gae_lambda
+        self.seed = seed
+        self.num_envs = num_envs
+        self.num_steps = num_steps
+        self.minibatches = num_mini_batches
+        self.update_epochs = num_update_epochs
+        self.alpha_entropy = alpha_entropy
+        self.max_norm = max_grad_norm
+        self.total_time_steps = total_time_steps
+        self.clip = clip_coeff
+        self.anneal_lr = anneal_lr
+        self.use_gae = use_gae
+        self.normalize_advantage = normalize_advantage
+        self.clip_critic = clip_critic
+        self.gym_id = gym_id
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.anneal_lr: bool = True
-        self.use_gae: bool = True
-        self.normalize_advantage: bool = True
-        self.clip = 0.2
-        self.clip_critic: bool = True
-        self.alpha_critic: float = 1e-9
-        self.alpha_entropy: float = 0.01
-        self.max_norm = 0.5
+        self.batch_size = int(self.num_steps * self.num_envs)
+
+    @staticmethod
+    def make_env(gym_id):
+        def thunk():
+            env = gymnasium.make(gym_id)
+            env = gymnasium.wrappers.RecordEpisodeStatistics(env)
+            return env
+
+        return thunk
 
     def get_value(self, obs):
         """"""
@@ -75,7 +166,7 @@ class PPO(nn.Module):
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(obs)
 
-    def rollout(self, total_timesteps: int = 25000):
+    def rollout(self):
         """"""
 
         obs = torch.zeros((self.num_steps, self.num_envs, self.obs_dim)).to(self.device)
@@ -87,7 +178,7 @@ class PPO(nn.Module):
         dones = torch.zeros((self.num_steps, self.num_envs)).to(self.device)
         values = torch.zeros((self.num_steps, self.num_envs)).to(self.device)
 
-        n_updates = total_timesteps // self.batch_size
+        n_updates = self.total_timesteps // self.batch_size
         global_step = 0
         start_time = time.time()
 
