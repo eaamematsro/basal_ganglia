@@ -150,8 +150,8 @@ if __name__ == "__main__":
 
     if args.track:
         wandb.init(
-            project=args.wand_project_name,
-            entity=args.wandb_entitiy,
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
             name=args.gym_id,
             monitor_gym=True,
             save_code=True,
@@ -166,25 +166,6 @@ if __name__ == "__main__":
         % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    for i in range(100):
-        writer.add_scalar("test_loss", i * 2, global_step=i)
-
     model = PPO(writer, **vars(args))
-    model.rollout()
-    pdb.set_trace()
-    # pdb.set_trace()
-    # envs = gymnasium.vector.SyncVectorEnv([make_env(name) for _ in range(4)])
-    # model = PPO(envs)
-    # model.rollout()
-    #
-    # # record video
-    # # env = gymnasium.wrappers.RecordVideo(
-    # #     env,
-    # #     "videos",
-    # # )
-    #
-    # obs = envs.reset()
-    # for _ in range(200):
-    #     action = envs.action_space.sample()
-    #     obs, reward, done, _, info = envs.step(action)
-    #     envs.render()
+    model.learning()
+    

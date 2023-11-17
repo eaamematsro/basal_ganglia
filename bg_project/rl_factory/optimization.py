@@ -171,7 +171,7 @@ class PPO(nn.Module):
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(obs)
 
-    def rollout(self):
+    def learning(self):
         """"""
 
         obs = torch.zeros((self.num_steps, self.num_envs, self.obs_dim)).to(self.device)
