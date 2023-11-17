@@ -7,7 +7,7 @@ import wandb
 import time
 import matplotlib.pyplot as plt
 
-from rl_factory.optimization import PPO
+from rl_factory.optimization import ContinuousPPO
 from torch.utils.tensorboard import SummaryWriter
 from distutils.util import strtobool
 
@@ -24,11 +24,11 @@ def parse_args():
     parser.add_argument(
         "--gym-id",
         type=str,
-        default="CartPole-v1",
+        default="Pendulum-v1",
         help="The name of the gym environment",
     )
     parser.add_argument(
-        "--actor-lr", type=float, default=2.5e-4, help="Learning of the actor network"
+        "--actor-lr", type=float, default=1e-3, help="Learning of the actor network"
     )
     parser.add_argument(
         "--critic-lr", type=float, default=1e-3, help="Learning of the critic network"
@@ -41,7 +41,13 @@ def parse_args():
         help="Lambda coefficient for generalized advantage function.",
     )
     parser.add_argument(
-        "--num-envs", type=int, default=4, help="Number of parallel environments to run"
+        "--num-envs", type=int, default=1, help="Number of parallel environments to run"
+    )
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        default=2048,
+        help="Number of parallel environments to run",
     )
     parser.add_argument(
         "--seed",
@@ -52,17 +58,17 @@ def parse_args():
     parser.add_argument(
         "--num-mini-batches",
         type=int,
-        default=4,
+        default=32,
         help="Number of minibatches per rollout",
     )
     parser.add_argument(
         "--num-update-epochs",
         type=int,
-        default=4,
+        default=10,
         help="Number of gradient steps per rollout",
     )
     parser.add_argument(
-        "--alpha-entropy", type=float, default=0.95, help="Weight of entropy loss"
+        "--alpha-entropy", type=float, default=0, help="Weight of entropy loss"
     )
     parser.add_argument(
         "--clip-coeff", type=float, default=0.2, help="Clipping value for ppo objective"
@@ -76,7 +82,7 @@ def parse_args():
     parser.add_argument(
         "--total-time-steps",
         type=int,
-        default=25_000,
+        default=1_000_000,
         help="Total number of environment time steps",
     )
     parser.add_argument(
@@ -166,5 +172,5 @@ if __name__ == "__main__":
         % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    model = PPO(writer, **vars(args))
+    model = ContinuousPPO(writer, **vars(args))
     model.learning()
