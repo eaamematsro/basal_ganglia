@@ -7,7 +7,7 @@ import wandb
 import time
 import matplotlib.pyplot as plt
 
-from rl_factory.optimization import PPO
+from rl_games.optimization import PPO
 from torch.utils.tensorboard import SummaryWriter
 from distutils.util import strtobool
 

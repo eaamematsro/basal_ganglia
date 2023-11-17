@@ -367,7 +367,10 @@ class PPO(nn.Module):
 
 class ContinuousPPO(nn.Module):
     def __init__(
-        self, summary_writer: Optional[SummaryWriter] = None, **hyperparameters
+        self,
+        summary_writer: Optional[SummaryWriter] = None,
+        capture_videos: bool = True,
+        **hyperparameters,
     ):
         """"""
         super().__init__()
@@ -375,9 +378,13 @@ class ContinuousPPO(nn.Module):
         random.seed(self.seed)
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
-
         env = gymnasium.vector.SyncVectorEnv(
-            [self.make_env(self.gym_id, idx, self.seed) for idx in range(self.num_envs)]
+            [
+                self.make_env(
+                    self.gym_id, idx, self.seed, capture_videos=capture_videos
+                )
+                for idx in range(self.num_envs)
+            ]
         )
         if summary_writer is None:
             run_name = (
@@ -390,10 +397,7 @@ class ContinuousPPO(nn.Module):
                 f"|param|value|\n|-|-\n%s"
                 % (
                     "\n".join(
-                        [
-                            f"|{key}|{value}|"
-                            for key, value in vars(hyperparameters).items()
-                        ]
+                        [f"|{key}|{value}|" for key, value in hyperparameters.items()]
                     )
                 ),
             )
@@ -431,6 +435,7 @@ class ContinuousPPO(nn.Module):
         self.optimizer_critic = optim.Adam(
             self.critic.parameters(), eps=1e-5, lr=self.lr_crit
         )
+        self.final_rewards = []
 
     def _init_hyperparameters(
         self,
@@ -446,12 +451,12 @@ class ContinuousPPO(nn.Module):
         alpha_entropy: float = 1e-2,
         clip_coeff: float = 0.2,
         max_grad_norm: float = 1.0,
-        total_time_steps: int = 25000,
+        total_time_steps: int = 250000,
         use_gae: bool = True,
         anneal_lr: bool = True,
         normalize_advantage: bool = True,
         clip_critic: bool = True,
-        gym_id: str = "CartPole-v1",
+        gym_id: str = "Pendulum-v1",
         **kwargs,
     ):
         """Initializes network hyperparameters
@@ -735,3 +740,26 @@ class ContinuousPPO(nn.Module):
 
         self.env.close()
         self.writer.close()
+
+    def evaluate(self):
+        for _ in range(25):
+            next_obs = torch.Tensor(self.env.reset()[0]).to(self.device)
+            for step in range(self.num_steps):
+                with torch.no_grad():
+                    action, logprob, _, value = self.get_action_and_value(next_obs)
+
+                # Step environment
+
+                next_obs, reward, done, _, info = self.env.step(action.cpu().numpy())
+                next_obs, next_done = torch.Tensor(next_obs).to(
+                    self.device
+                ), torch.Tensor(done).to(self.device)
+
+                for key, value in info.items():
+                    if key == "final_info":
+                        for item in value:
+                            if isinstance(item, dict) and "episode" in item.keys():
+                                self.final_rewards.append(item["episode"]["r"].mean())
+                                print(f"episode_reward: {self.final_reward[-1]}")
+        self.env.close()
+        return np.mean(self.final_reward)

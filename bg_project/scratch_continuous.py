@@ -1,5 +1,6 @@
 import argparse
 import os.path
+import optuna
 import pdb
 
 import gymnasium
@@ -7,7 +8,7 @@ import wandb
 import time
 import matplotlib.pyplot as plt
 
-from rl_factory.optimization import ContinuousPPO
+from rl_games.optimization import ContinuousPPO
 from torch.utils.tensorboard import SummaryWriter
 from distutils.util import strtobool
 
@@ -82,7 +83,7 @@ def parse_args():
     parser.add_argument(
         "--total-time-steps",
         type=int,
-        default=1_000_000,
+        default=200_000,
         help="Total number of environment time steps",
     )
     parser.add_argument(
@@ -150,6 +151,25 @@ def make_env(gym_id):
     return thunk
 
 
+def objective(trial):
+    model = ContinuousPPO(
+        actor_lr=trial.suggest_float("actor_lr", 1e-5, 1e-1),
+        critic_lr=trial.suggest_float("critic_lr", 1e-5, 1e-1),
+        num_mini_batches=trial.suggest_int("num_mini_batches", 4, 64),
+        num_update_epochs=trial.suggest_int("num_update_epochs", 1, 20),
+        capture_videos=False,
+        gym_id="Pendulum-v1",
+        exp_name="tuning",
+        seed=1,
+        num_envs=1,
+        num_steps=1024,
+    )
+
+    model.learning()
+    final_reward = model.evaluate()
+    return final_reward
+
+
 if __name__ == "__main__":
     args = parse_args()
     run_name = f"{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
@@ -172,5 +192,8 @@ if __name__ == "__main__":
         % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    model = ContinuousPPO(writer, **vars(args))
-    model.learning()
+    # model = ContinuousPPO(writer, capture_videos=False, **vars(args))
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=100)
+    pdb.set_trace()
+    # model.learning()
