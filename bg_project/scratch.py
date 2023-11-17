@@ -170,7 +170,8 @@ if __name__ == "__main__":
         writer.add_scalar("test_loss", i * 2, global_step=i)
 
     model = PPO(writer, **vars(args))
-
+    model.rollout()
+    pdb.set_trace()
     # pdb.set_trace()
     # envs = gymnasium.vector.SyncVectorEnv([make_env(name) for _ in range(4)])
     # model = PPO(envs)

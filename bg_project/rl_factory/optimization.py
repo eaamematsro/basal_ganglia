@@ -24,7 +24,7 @@ class PPO(nn.Module):
         torch.manual_seed(self.seed)
 
         env = gymnasium.vector.SyncVectorEnv(
-            [self.make_env(self.gym_id) for _ in range(self.num_envs)]
+            [self.make_env(self.gym_id, idx, self.seed) for idx in range(self.num_envs)]
         )
         if summary_writer is None:
             run_name = (
@@ -45,7 +45,6 @@ class PPO(nn.Module):
                 ),
             )
         self.writer = summary_writer
-        pdb.set_trace()
         self.env = env
         self.obs_dim = np.prod(env.single_observation_space.shape)
         self.act_dim = np.prod(env.single_action_space.n)
@@ -98,7 +97,6 @@ class PPO(nn.Module):
         """Initializes network hyperparameters
 
         Args:
-            seed:
             actor_lr: Actor learning rate, by default 2.5e-3.
             critic_lr: Critic learning rate, by default 1e-3
             gamma: Discount factor, by default 0.99
@@ -134,7 +132,7 @@ class PPO(nn.Module):
         self.update_epochs = num_update_epochs
         self.alpha_entropy = alpha_entropy
         self.max_norm = max_grad_norm
-        self.total_time_steps = total_time_steps
+        self.total_timesteps = total_time_steps
         self.clip = clip_coeff
         self.anneal_lr = anneal_lr
         self.use_gae = use_gae
@@ -146,10 +144,17 @@ class PPO(nn.Module):
         self.batch_size = int(self.num_steps * self.num_envs)
 
     @staticmethod
-    def make_env(gym_id):
+    def make_env(gym_id, idx, seed, capture_videos: bool = True, rec_freq: int = 500):
         def thunk():
-            env = gymnasium.make(gym_id)
+            env = gymnasium.make(gym_id, render_mode="rgb_array")
             env = gymnasium.wrappers.RecordEpisodeStatistics(env)
+            if capture_videos:
+                if idx == 0:  # record actions of the first environment only
+                    env = gymnasium.wrappers.RecordVideo(
+                        env, "videos", step_trigger=lambda t: t % rec_freq == 0
+                    )
+            env.action_space.seed(seed)
+            env.observation_space.seed(seed)
             return env
 
         return thunk
@@ -216,6 +221,16 @@ class PPO(nn.Module):
                             if isinstance(item, dict) and "episode" in item.keys():
                                 print(
                                     f"global_step: {global_step} Episode return: {item['episode']['r']}"
+                                )
+                                self.writer.add_scalar(
+                                    "charts/episodic_return",
+                                    item["episode"]["r"],
+                                    global_step,
+                                )
+                                self.writer.add_scalar(
+                                    "charts/episodic_length",
+                                    item["episode"]["l"],
+                                    global_step,
                                 )
 
             with torch.no_grad():
@@ -319,4 +334,30 @@ class PPO(nn.Module):
                     var_y = np.var(y_true)
                     explained_var = (
                         np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+                    )
+
+                    self.writer.add_scalar(
+                        "charts/learning_rate",
+                        self.optimizer_actor.param_groups[0]["lr"],
+                        global_step,
+                    )
+                    self.writer.add_scalar(
+                        "losses/value_loss", v_loss.item(), global_step
+                    )
+                    self.writer.add_scalar(
+                        "losses/policy_loss", pg_loss.item(), global_step
+                    )
+                    self.writer.add_scalar(
+                        "losses/entropy", entropy_loss.item(), global_step
+                    )
+                    self.writer.add_scalar(
+                        "losses/approx_kl", kl_approx.item(), global_step
+                    )
+                    self.writer.add_scalar(
+                        "losses/explained_variance", explained_var, global_step
+                    )
+                    self.writer.add_scalar(
+                        "charts/SPS",
+                        int(global_step / (time.time() - start_time)),
+                        global_step,
                     )
