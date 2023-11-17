@@ -207,7 +207,7 @@ class GridWorld(PyGame):
         self,
     ) -> Dict:
 
-        info = {'r': self.reward}
+        info = {"r": self.reward}
         return info
 
     def view(self):
@@ -230,6 +230,7 @@ class GridWorld(PyGame):
             direction_reward = 1
         self.reward = reward_distance + direction_reward
         return self.reward
+
 
 class MultiWorldGridWorld(GridWorld):
     def __init__(self, x_divisions: int = 2, y_divisions: int = 1, **kwargs):
