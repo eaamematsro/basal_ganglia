@@ -16,7 +16,7 @@ class PyGame(metaclass=abc.ABCMeta):
         height: int = 480,
         title: str = "BaseModel",
         fps: int = 10,
-        **kwargs
+        **kwargs,
     ):
         pygame.init()
         self.display = pygame.display.set_mode(size=(width, height))
@@ -72,12 +72,13 @@ class GridWorld(PyGame):
         self.velocity = None
         self.done = False
         self.reward = None
+        self.prev_dist = None
         self.score = 0
         self.dist = 0
         self.betas = 1 * np.eye(2) + 1 * np.asarray(
             [
-                [np.cos(rotation * np.pi / 180), np.sin(rotation * np.pi / 180)],
-                [-np.sin(rotation * np.pi / 180), np.cos(rotation * np.pi / 180)],
+                [np.cos(rotation * np.pi / 180), -np.sin(rotation * np.pi / 180)],
+                [np.sin(rotation * np.pi / 180), np.cos(rotation * np.pi / 180)],
             ]
         )
         self.gain = 15
@@ -103,13 +104,13 @@ class GridWorld(PyGame):
         if self.target_pos is None or self.done:
             x = random.randrange(3, self.width - 1)
             y = random.randrange(3, self.height - 1)
-            self.target_pos = (x, y)
+            self.target_pos = np.array([x, y])
 
     def generate_agent(self):
         if self.target_pos is None:
             x = random.randrange(3, self.width - 1)
             y = random.randrange(3, self.height - 1)
-            self.agent_pos = (x, y)
+            self.agent_pos = np.array([x, y])
             self.velocity = (0, 0)
 
     def detect_collision(self, boundary: int = 5):
@@ -145,16 +146,17 @@ class GridWorld(PyGame):
 
             pos = (
                 np.asarray([x, y])
-                + self.gain * (self.betas @ np.asarray(self.velocity))
+                + self.gain * (self.betas @ action)
                 + np.asarray(self.drifts)
             )
-            self.agent_pos = (pos[0], pos[1])
+
+            self.agent_pos = pos
 
         self.detect_collision()
 
     def run(self):
         self.running = True
-        font = pygame.font.SysFont("Arial_bold", 380)
+        font = pygame.font.SysFont("Arial_bold", 200)
 
         while self.running:
             self.generate_agent()
@@ -178,11 +180,12 @@ class GridWorld(PyGame):
                         action = np.array([1, 0])
             self.act(action)
             self.detect_collision()
+            self.evaluate()
 
             # Draw target and agent icons
             self.display.fill((67, 70, 75))
 
-            img = font.render(str(self.score), True, (57, 60, 65))
+            img = font.render(f"{self.reward: 0.2f}", True, (57, 60, 65))
 
             self.display.blit(
                 img, img.get_rect(center=(20 * 15 + 15, 15 * 15 + 15)).topleft
@@ -223,12 +226,16 @@ class GridWorld(PyGame):
         self,
     ):
         """"""
-        current_distance = ((self.target_pos - self.agent_pos) ** 2).sum()
-        reward_distance = 100 * np.exp(-current_distance)
+        current_distance = np.sqrt(((self.target_pos - self.agent_pos) ** 2).sum())
+        reward_distance = 100 * np.exp(-current_distance / ((0.01 * self.width) ** 2))
         direction_reward = 0
-        if self.prev_dist > current_distance:
-            direction_reward = 1
+        if self.prev_dist is not None:
+            if self.prev_dist > current_distance:
+                direction_reward = 1
+            elif self.prev_dist < current_distance:
+                direction_reward = -5
         self.reward = reward_distance + direction_reward
+        self.prev_dist = current_distance
         return self.reward
 
 
@@ -250,7 +257,8 @@ class MultiWorldGridWorld(GridWorld):
             self.y_bins = None
 
         for x_div, y_div in product(range(x_divisions), range(y_divisions)):
-            rotation = np.sqrt(45) * np.random.randn(0)
+            rotation = np.sqrt(180) * np.random.randn()
+
             self.betas.update(
                 {
                     (x_div, y_div): 0 * np.eye(2)
@@ -258,10 +266,10 @@ class MultiWorldGridWorld(GridWorld):
                         [
                             [
                                 np.cos(rotation * np.pi / 180),
-                                np.sin(rotation * np.pi / 180),
+                                -np.sin(rotation * np.pi / 180),
                             ],
                             [
-                                -np.sin(rotation * np.pi / 180),
+                                np.sin(rotation * np.pi / 180),
                                 np.cos(rotation * np.pi / 180),
                             ],
                         ]
@@ -269,12 +277,12 @@ class MultiWorldGridWorld(GridWorld):
                 }
             )
 
-    def update_position(self):
+    def act(self, action):
 
         if self.done:
             self.generate_agent()
             self.generate_target()
-            self.reached_target = False
+            self.done = False
 
         else:
             x, y = self.agent_pos
@@ -288,10 +296,9 @@ class MultiWorldGridWorld(GridWorld):
                 idy = np.digitize(y, self.y_bins) - 1
             else:
                 idy = 0
-
             pos = (
                 np.asarray([x, y])
-                + self.gain * (self.betas[(idx, idy)] @ np.asarray(self.velocity))
+                + self.gain * (self.betas[(idx, idy)] @ action)
                 + np.asarray(self.drifts)
             )
             self.agent_pos = (pos[0], pos[1])

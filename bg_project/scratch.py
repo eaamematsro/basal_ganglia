@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from rl_games.optimization import PPO
 from torch.utils.tensorboard import SummaryWriter
 from distutils.util import strtobool
+from rl_games.pygames.rl_games import MultiWorldGridWorld
 
 
 def parse_args():
@@ -145,26 +146,28 @@ def make_env(gym_id):
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    run_name = f"{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-
-    if args.track:
-        wandb.init(
-            project=args.wandb_project_name,
-            entity=args.wandb_entity,
-            name=args.gym_id,
-            monitor_gym=True,
-            save_code=True,
-            sync_tensorboard=True,
-            config=vars(args),
-        )
-
-    writer = SummaryWriter(f"runs/{run_name}")
-    writer.add_text(
-        "Hyperparameters",
-        f"|param|value|\n|-|-\n%s"
-        % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-    )
-
-    model = PPO(writer, **vars(args))
-    model.learning()
+    game = MultiWorldGridWorld()
+    game.run()
+    # args = parse_args()
+    # run_name = f"{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    #
+    # if args.track:
+    #     wandb.init(
+    #         project=args.wandb_project_name,
+    #         entity=args.wandb_entity,
+    #         name=args.gym_id,
+    #         monitor_gym=True,
+    #         save_code=True,
+    #         sync_tensorboard=True,
+    #         config=vars(args),
+    #     )
+    #
+    # writer = SummaryWriter(f"runs/{run_name}")
+    # writer.add_text(
+    #     "Hyperparameters",
+    #     f"|param|value|\n|-|-\n%s"
+    #     % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+    # )
+    #
+    # model = PPO(writer, **vars(args))
+    # model.learning()
