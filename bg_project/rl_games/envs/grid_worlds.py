@@ -6,7 +6,7 @@ from gymnasium import spaces
 
 class GridWorldEnv(CustomEnv):
     def _initialize_spaces(self):
-        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-20, high=20, shape=(2,), dtype=np.float32)
         self.observation_space = spaces.Box(
             low=0,
             high=np.array(
@@ -28,9 +28,19 @@ class GridWorldEnv(CustomEnv):
 
 class MultiWorldGridWorldEnv(CustomEnv):
     def _initialize_spaces(self):
-        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-20, high=20, shape=(2,), dtype=np.float32)
         self.observation_space = spaces.Box(
-            low=0, high=np.array([30, 40]), dtype=np.float32
+            low=0,
+            high=np.array(
+                [
+                    self.pygame.width,
+                    self.pygame.width,
+                    self.pygame.height,
+                    self.pygame.height,
+                ]
+            ),
+            shape=(4,),
+            dtype=np.float32,
         )
 
     def __init__(self, **kwargs):

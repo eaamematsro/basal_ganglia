@@ -6,7 +6,6 @@ import pdb
 import gymnasium
 import wandb
 import time
-import matplotlib.pyplot as plt
 
 from rl_games.optimization import ContinuousPPO
 from torch.utils.tensorboard import SummaryWriter
@@ -25,7 +24,7 @@ def parse_args():
     parser.add_argument(
         "--gym-id",
         type=str,
-        default="MultiGridWorld-v0",
+        default="GridWorld-v0",
         help="The name of the gym environment",
     )
     parser.add_argument(
@@ -42,12 +41,12 @@ def parse_args():
         help="Lambda coefficient for generalized advantage function.",
     )
     parser.add_argument(
-        "--num-envs", type=int, default=1, help="Number of parallel environments to run"
+        "--num-envs", type=int, default=4, help="Number of parallel environments to run"
     )
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=2048,
+        default=500,
         help="Number of parallel environments to run",
     )
     parser.add_argument(
@@ -59,13 +58,13 @@ def parse_args():
     parser.add_argument(
         "--num-mini-batches",
         type=int,
-        default=32,
+        default=4,
         help="Number of minibatches per rollout",
     )
     parser.add_argument(
         "--num-update-epochs",
         type=int,
-        default=10,
+        default=4,
         help="Number of gradient steps per rollout",
     )
     parser.add_argument(
@@ -83,7 +82,7 @@ def parse_args():
     parser.add_argument(
         "--total-time-steps",
         type=int,
-        default=100_000,
+        default=500_000,
         help="Total number of environment time steps",
     )
     parser.add_argument(

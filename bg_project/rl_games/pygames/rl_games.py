@@ -83,7 +83,7 @@ class GridWorld(PyGame):
                 [np.sin(rotation * np.pi / 180), np.cos(rotation * np.pi / 180)],
             ]
         )
-        self.gain = 15
+        self.gain = 1
         self.drifts = np.zeros(2)
         self.font = pygame.font.SysFont("Arial_bold", 200)
 
@@ -308,4 +308,4 @@ class MultiWorldGridWorld(GridWorld):
                 + self.gain * (self.betas[(idx, idy)] @ action)
                 + np.asarray(self.drifts)
             )
-            self.agent_pos = (pos[0], pos[1])
+            self.agent_pos = pos

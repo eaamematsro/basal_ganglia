@@ -15,7 +15,7 @@ class CustomEnv(Env, metaclass=abc.ABCMeta):
 
     metadata = {
         "render_modes": ["human", "rgb_array"],
-        "render_fps": 60,
+        "render_fps": 30,
     }
 
     def __init__(
