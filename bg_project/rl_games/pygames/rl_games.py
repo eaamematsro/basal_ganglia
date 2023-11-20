@@ -19,6 +19,7 @@ class PyGame(metaclass=abc.ABCMeta):
         **kwargs,
     ):
         pygame.init()
+        self.render_mode = None
         self.display = pygame.display.set_mode(size=(width, height))
         pygame.display.set_caption(title)
         self.fps = fps
@@ -65,7 +66,7 @@ class PyGame(metaclass=abc.ABCMeta):
 
 
 class GridWorld(PyGame):
-    def __init__(self, rotation: float = 90, **kwargs):
+    def __init__(self, rotation: float = 90, max_time_steps: int = 500, **kwargs):
         super().__init__(title=type(self).__name__, **kwargs)
         self.target_pos = None
         self.agent_pos = None
@@ -74,7 +75,8 @@ class GridWorld(PyGame):
         self.reward = None
         self.prev_dist = None
         self.score = 0
-        self.dist = 0
+        self.time_steps = 0
+        self.max_time = max_time_steps
         self.betas = 1 * np.eye(2) + 1 * np.asarray(
             [
                 [np.cos(rotation * np.pi / 180), -np.sin(rotation * np.pi / 180)],
@@ -83,6 +85,7 @@ class GridWorld(PyGame):
         )
         self.gain = 15
         self.drifts = np.zeros(2)
+        self.font = pygame.font.SysFont("Arial_bold", 200)
 
     def reset(self):
         """"""
@@ -90,14 +93,23 @@ class GridWorld(PyGame):
         self.agent_pos = None
         self.velocity = None
         self.done = False
-        self.reward = None
+        self.reward = 0
         self.score = 0
         self.prev_dist = None
+        self.time_steps = 0
         self.generate_agent()
         self.generate_target()
 
     def observe(self):
-        obs = np.array([self.target_pos, self.agent_pos])
+        obs = np.array(
+            [
+                self.agent_pos[0],
+                self.target_pos[0],
+                self.agent_pos[1],
+                self.target_pos[1],
+            ],
+            dtype=np.float32,
+        )
         return obs
 
     def generate_target(self):
@@ -135,11 +147,9 @@ class GridWorld(PyGame):
             self.agent_pos = (self.agent_pos[0], self.height - boundary)
 
     def act(self, action: np.ndarray):
-
+        self.time_steps += 1
         if self.done:
-            self.generate_agent()
-            self.generate_target()
-            self.done = False
+            self.reset()
 
         else:
             x, y = self.agent_pos
@@ -156,7 +166,6 @@ class GridWorld(PyGame):
 
     def run(self):
         self.running = True
-        font = pygame.font.SysFont("Arial_bold", 200)
 
         while self.running:
             self.generate_agent()
@@ -181,28 +190,6 @@ class GridWorld(PyGame):
             self.act(action)
             self.detect_collision()
             self.evaluate()
-
-            # Draw target and agent icons
-            self.display.fill((67, 70, 75))
-
-            img = font.render(f"{self.reward: 0.2f}", True, (57, 60, 65))
-
-            self.display.blit(
-                img, img.get_rect(center=(20 * 15 + 15, 15 * 15 + 15)).topleft
-            )
-
-            pygame.draw.rect(
-                self.display,
-                "RED",
-                (self.target_pos[0], self.target_pos[1], 15, 15),
-            )
-
-            pygame.draw.rect(
-                self.display,
-                "White",
-                (self.agent_pos[0], self.agent_pos[1], 15, 15),
-            )
-
             self.view()  # update display surface
         self.close()
 
@@ -214,12 +201,32 @@ class GridWorld(PyGame):
         return info
 
     def view(self):
-        pygame.display.update()
-        self.clock.tick(self.fps)
+        # Draw target and agent icons
+        self.display.fill((67, 70, 75))
+
+        img = self.font.render(f"{self.reward: 0.2f}", True, (57, 60, 65))
+
+        self.display.blit(
+            img, img.get_rect(center=(20 * 15 + 15, 15 * 15 + 15)).topleft
+        )
+
+        pygame.draw.rect(
+            self.display,
+            "RED",
+            (self.target_pos[0], self.target_pos[1], 15, 15),
+        )
+
+        pygame.draw.rect(
+            self.display,
+            "White",
+            (self.agent_pos[0], self.agent_pos[1], 15, 15),
+        )
 
     def is_done(
         self,
     ):
+        if self.time_steps == self.max_time:
+            self.done = True
         return self.done
 
     def evaluate(

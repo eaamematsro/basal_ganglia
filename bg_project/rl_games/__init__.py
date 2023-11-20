@@ -1,6 +1,7 @@
 from gymnasium.envs.registration import register
 
+register(id="GridWorld-v0", entry_point="rl_games.envs.grid_worlds:GridWorldEnv")
 register(
-    id="GridWorld-v0",
-    entry_point="rl_games.envs:GridWorld",
+    id="MultiGridWorld-v0",
+    entry_point="rl_games.envs.grid_worlds:MultiWorldGridWorldEnv",
 )

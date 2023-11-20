@@ -1,15 +1,38 @@
-from gymnasium import Env
+import numpy as np
+from rl_games.envs.custom_env import CustomEnv
+from rl_games.pygames.rl_games import GridWorld, MultiWorldGridWorld
+from gymnasium import spaces
 
 
-class GridWorld(Env):
-    def __init__(self):
-        super().__init__()
+class GridWorldEnv(CustomEnv):
+    def _initialize_spaces(self):
+        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(
+            low=0,
+            high=np.array(
+                [
+                    self.pygame.width,
+                    self.pygame.width,
+                    self.pygame.height,
+                    self.pygame.height,
+                ]
+            ),
+            shape=(4,),
+            dtype=np.float32,
+        )
 
-    def reset(self):
-        pass
+    def __init__(self, **kwargs):
+        super().__init__(pygame=GridWorld, **kwargs)
+        self.pygame.reset()
 
-    def step(self):
-        pass
 
-    def render(self):
-        pass
+class MultiWorldGridWorldEnv(CustomEnv):
+    def _initialize_spaces(self):
+        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(
+            low=0, high=np.array([30, 40]), dtype=np.float32
+        )
+
+    def __init__(self, **kwargs):
+        super().__init__(pygame=MultiWorldGridWorld, **kwargs)
+        self.pygame.reset()

@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument(
         "--gym-id",
         type=str,
-        default="Pendulum-v1",
+        default="GridWorld-v0",
         help="The name of the gym environment",
     )
     parser.add_argument(
@@ -83,7 +83,7 @@ def parse_args():
     parser.add_argument(
         "--total-time-steps",
         type=int,
-        default=200_000,
+        default=100_000,
         help="Total number of environment time steps",
     )
     parser.add_argument(
@@ -192,8 +192,8 @@ if __name__ == "__main__":
         % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    # model = ContinuousPPO(writer, capture_videos=False, **vars(args))
-    study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=100)
-    pdb.set_trace()
-    # model.learning()
+    model = ContinuousPPO(writer, capture_videos=True, **vars(args))
+    # study = optuna.create_study(direction="maximize")
+    # study.optimize(objective, n_trials=100)
+    # pdb.set_trace()
+    model.learning()
