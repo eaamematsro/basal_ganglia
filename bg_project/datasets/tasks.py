@@ -530,7 +530,9 @@ class MultiGainPacMan(Task):
                 "target_height": targets[ti][:, None],
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
-            force_store[ti] = outputs["r_act"] @ self.network.Wout
+            force_store[ti] = torch.clamp(
+                outputs["r_act"] @ self.network.Wout, -1e4, 1e4
+            )
             # acceleration = (
             #     (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
             #     - velocity * contexts[1][:, None]
@@ -540,7 +542,7 @@ class MultiGainPacMan(Task):
                 0
             ].unsqueeze(1) - contexts[1].unsqueeze(1) * velocity
             velocity = velocity + self.dt / self.network.rnn.tau * acceleration
-            position_store[ti] = torch.clip(
+            position_store[ti] = torch.clamp(
                 position
                 + self.dt / self.network.rnn.tau * contexts[2].unsqueeze(1) * velocity,
                 -max_pos,

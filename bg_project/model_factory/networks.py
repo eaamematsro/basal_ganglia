@@ -178,17 +178,17 @@ class ThalamicRNN(Module):
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
-        # self.U = nn.Parameter(
-        #     torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
-        #     requires_grad=False,
-        # )
-        # self.V = nn.Parameter(
-        #     torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
-        #     requires_grad=False,
-        # )
-        U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
-        self.U = nn.Parameter(torchify(U), requires_grad=True)
-        self.V = nn.Parameter(torchify(V), requires_grad=False)
+        self.U = nn.Parameter(
+            torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
+            requires_grad=False,
+        )
+        self.V = nn.Parameter(
+            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
+            requires_grad=False,
+        )
+        # U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
+        # self.U = nn.Parameter(torchify(U), requires_grad=False)
+        # self.V = nn.Parameter(torchify(V), requires_grad=False)
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
