@@ -146,6 +146,8 @@ class ThalamicRNN(Module):
         nneurons: int = 100,
         nbg: int = 20,
         non_linearity: Optional[nn.Module] = None,
+        th_non_linearity: Optional[nn.Module] = None,
+        bg_non_linearity: Optional[nn.Module] = None,
         g0: float = 1.2,
         input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
         dt: float = 5e-2,
@@ -157,10 +159,18 @@ class ThalamicRNN(Module):
         if non_linearity is None:
             non_linearity = nn.Softplus()
 
+        if th_non_linearity is None:
+            th_non_linearity = nn.Softplus()
+
+        if bg_non_linearity is None:
+            bg_non_linearity = nn.Sigmoid()
+
         if noise_model is None:
             noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
 
         self.nonlinearity = non_linearity
+        self.th_nonlinearity = th_non_linearity
+        self.bg_nonlinearity = bg_non_linearity
 
         self.I = nn.ParameterDict({})
 
@@ -256,17 +266,16 @@ class ThalamicRNN(Module):
         for input_name, input_value in inputs.items():
             out += input_value @ self.I[input_name]
 
-        # r_mat = torch.diag_embed(r_thalamic)
-        # bg_tensor = torch.matmul(self.U, torch.matmul(r_mat, self.V))
-        # rec_input = torch.matmul(bg_tensor, self.r.unsqueeze(2)).squeeze()
-
-        # rec_input = torch.einsum(
-        #     "ij, kj, jl, ki -> kl", self.U, r_thalamic, self.V, self.r
-        # )
+        r_mat = torch.diag_embed(self.bg_nonlinearity(r_thalamic))
+        thalamic_drive = self.th_nonlinearity(self.r @ self.V.T)
+        gain_modulated_drive = torch.matmul(r_mat, thalamic_drive.T)
+        indices = range(self.r.shape[0])
+        effective_drive = gain_modulated_drive[indices, :, indices]
+        effective_input = effective_drive @ self.U.T
 
         x = self.x + self.dt / self.tau * (
             self.noise_model(
-                -self.x + self.r @ (r_thalamic * self.J) + self.B + out,
+                -self.x + self.r @ self.J + effective_input + self.B + out,
                 noise_scale,
             )
         )
