@@ -9,6 +9,7 @@ from datasets.tasks import MultiGainPacMan, set_results_path
 from datasets.loaders import PacmanDataset
 from torch.utils.data import DataLoader, RandomSampler, random_split
 from pytorch_lightning import Trainer
+from itertools import product
 
 plt.style.use("ggplot")
 
@@ -27,14 +28,20 @@ def split_dataset(dataset, fractions: Sequence = (0.6, 0.2, 0.2)):
 if __name__ == "__main__":
     test_networks = [
         "RNNStaticBG",
-        "RNNMultiContextInput",
+        "VanillaRNN",
     ]
 
     weight_penalties = np.logspace(-5, -1)
+    weight_penalty = 0
     torch.set_float32_matmul_precision("medium")
     trial_duration = 150
 
-    for weight_penalty in weight_penalties:
+    n_batches = 5
+
+    polarity = [1]
+    viscosities = np.linspace(0, 1, 10)
+    masses = np.linspace(0.5, 2, 10)
+    for _ in range(n_batches):
 
         simple_model = MultiGainPacMan(
             network="VanillaRNN",
@@ -65,7 +72,7 @@ if __name__ == "__main__":
         save_path = set_results_path(type(simple_model).__name__)[0]
 
         trainer = Trainer(
-            max_epochs=25,
+            max_epochs=50,
             gradient_clip_val=10,
             accelerator="gpu",
             devices=1,
@@ -89,95 +96,91 @@ if __name__ == "__main__":
         #
         # pdb.set_trace()
 
-        trainer.test(
-            simple_model, dataloaders=DataLoader(test_set["data"], num_workers=10)
-        )
+        # trainer.test(
+        #     simple_model, dataloaders=DataLoader(test_set["data"], num_workers=10)
+        # )
         # pdb.set_trace()
-        simple_model.save_model()
-        # file_path = "/home/elom/Documents/basal_ganglia/data/models/2023-09-29/model_1/model.pickle"
+        # simple_model.save_model()
+        # pdb.set_trace()
+        # file_path = "/home/elom/Documents/basal_ganglia/data/models/MultiGainPacMan/2023-11-25/model_77/model.pickle"
         # with open(file_path, "rb") as h:
         #     loaded_data = pickle.load(h)
         # trained_network = loaded_data["network"]
         # simple_model.network = trained_network
 
-        train_set, val_set, test_set = split_dataset(
-            PacmanDataset(
-                n_samples=100,
-                trial_duration=trial_duration,
-            ),
-            (0.6, 0.2, 0.2),
-        )
+        gain_vectors = []
+        contexts = []
 
-        train_loader = DataLoader(
-            train_set["data"],
-            batch_size=batch_size,
-            sampler=train_set["sampler"],
-            num_workers=10,
-        )
-
-        val_loader = DataLoader(val_set["data"], batch_size=batch_size, num_workers=10)
-
-        for network in test_networks:
-            for nbg in [25, 50, 100, 150]:
-                thalamic_model = MultiGainPacMan(
-                    network=network,
-                    duration=trial_duration,
-                    nbg=nbg,
-                    apply_energy_penalty=("bg_act",),
-                    output_weight_penalty=0,
-                    bg_input_size=3,
-                    teacher_output_penalty=weight_penalty,
-                    lr=1e-4,
+        for mass, gain, vis in product(masses, polarity, viscosities):
+            for network in test_networks:
+                print(f"Mass: {mass}, polarity: {gain}, viscosity: {vis}")
+                train_set, val_set, test_set = split_dataset(
+                    PacmanDataset(
+                        n_samples=5000,
+                        masses=(mass,),
+                        viscosity=(vis,),
+                        polarity=(gain,),
+                        trial_duration=trial_duration,
+                    ),
+                    (0.6, 0.2, 0.2),
                 )
+
+                train_loader = DataLoader(
+                    train_set["data"],
+                    batch_size=batch_size,
+                    sampler=train_set["sampler"],
+                    num_workers=10,
+                )
+
+                val_loader = DataLoader(
+                    val_set["data"], batch_size=batch_size, num_workers=10
+                )
+                if network == "RNNMultiContextInput":
+                    thalamic_model = MultiGainPacMan(
+                        network="VanillaRNN",
+                        duration=trial_duration,
+                        output_weight_penalty=0,
+                        bg_input_size=3,
+                        teacher_output_penalty=weight_penalty,
+                        lr=1e-2,
+                        polarity=gain,
+                        viscosity=vis,
+                        mass=mass,
+                        original_model=simple_model.network.save_path.root,
+                    )
+                else:
+                    thalamic_model = MultiGainPacMan(
+                        network=network,
+                        duration=trial_duration,
+                        nbg=10,
+                        output_weight_penalty=0,
+                        bg_input_size=3,
+                        teacher_output_penalty=weight_penalty,
+                        lr=1e-2,
+                        polarity=gain,
+                        viscosity=vis,
+                        mass=mass,
+                        original_model=simple_model.network.save_path.root,
+                    )
 
                 # Transfer and freeze weights from trained network's rnn module
                 transfer_network_weights(
-                    thalamic_model.network, simple_model.network, freeze=True
+                    thalamic_model.network,
+                    simple_model.network,
+                    freeze=True,
                 )
 
                 if network == "RNNStaticBG":
-                    thalamic_model.network.rnn.reconfigure_u_v(g1=1)
-
-                # Training on an easier condition set to get better initializations
-
-                # train_set, val_set, test_set = split_dataset(
-                #     PacmanDataset(
-                #         n_samples=25, trial_duration=trial_duration, polarity=(1,)
-                #     ),
-                #     (0.6, 0.2, 0.2),
-                # )
-                #
-                # burn_train_loader = DataLoader(
-                #     train_set["data"],
-                #     batch_size=batch_size,
-                #     sampler=train_set["sampler"],
-                #     num_workers=10,
-                # )
-                #
-                # val_loader = DataLoader(
-                #     val_set["data"], batch_size=batch_size, num_workers=10
-                # )
-                #
-                # save_path = set_results_path(type(thalamic_model).__name__)[0]
-                #
-                # burn_trainer = Trainer(
-                #     max_epochs=200,
-                #     # gradient_clip_val=1,
-                #     accelerator="gpu",
-                #     devices=4,
-                #     default_root_dir=save_path,
-                # )
-                #
-                # burn_trainer.fit(
-                #     model=thalamic_model,
-                #     train_dataloaders=burn_train_loader,
-                #     val_dataloaders=val_loader,
-                # )
+                    thalamic_model.network.rnn.reconfigure_u_v()
+                elif network == "VanillaRNN":
+                    thalamic_model.network.rnn.J.requires_grad = True
+                elif network == "RNNMultiContextInput":
+                    thalamic_model.network.rnn.B.requires_grad = True
 
                 save_path = set_results_path(type(thalamic_model).__name__)[0]
 
                 trainer = Trainer(
-                    max_epochs=100,
+                    max_epochs=25,
                     gradient_clip_val=10,
                     accelerator="gpu",
                     devices=1,
@@ -194,15 +197,24 @@ if __name__ == "__main__":
                     thalamic_model,
                     dataloaders=DataLoader(test_set["data"], num_workers=10),
                 )
-
-                for batch_idx, batch in enumerate(val_loader):
-                    thalamic_model.evaluate_training(
-                        batch, original_network=simple_model
+                if network == "RNNStaticBG":
+                    contexts.append(np.array([mass, vis, gain]))
+                    gain_vectors.append(
+                        thalamic_model.network.bg_nfn(thalamic_model.network.bg)
+                        .detach()
+                        .numpy()
+                        * thalamic_model.network.bg_gain.detach().numpy()
                     )
+
+                # if network == "RNNStaticBG":
+                #
+                #     for batch_idx, batch in enumerate(val_loader):
+                #         thalamic_model.evaluate_training(
+                #             batch, original_network=simple_model
+                #         )
 
                 # for batch_idx, batch in enumerate(val_loader):
                 #     simple_model.change_context(batch, new_context=(2, 0, -1))
 
-                pdb.set_trace()
                 thalamic_model.save_model()
                 plt.close("all")

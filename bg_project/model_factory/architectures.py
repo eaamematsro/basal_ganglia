@@ -4,6 +4,7 @@ import os
 import re
 from abc import ABC
 
+import numpy as np
 import torch
 import pickle
 import json
@@ -12,6 +13,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
 from torch.distributions.multivariate_normal import MultivariateNormal
+from model_factory.factory_utils import torchify
 from .networks import (
     MLP,
     MultiHeadMLP,
@@ -164,13 +166,15 @@ class RNNMultiContextInput(BaseArchitecture):
             dt=dt,
             tau=tau,
         )
-        self.bg = MLP(
-            layer_sizes=bg_layer_sizes,
-            non_linearity=bg_nfn,
-            input_size=bg_input_size,
-            output_size=nbg,
-            include_bias=include_bias,
-        )
+        # self.bg = MLP(
+        #     layer_sizes=bg_layer_sizes,
+        #     non_linearity=bg_nfn,
+        #     input_size=bg_input_size,
+        #     output_size=nbg,
+        #     include_bias=include_bias,
+        # )
+
+        self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
 
     def set_outputs(self):
         self.output_names = ["r_hidden", "r_act", "bg_act"]
@@ -182,11 +186,11 @@ class RNNMultiContextInput(BaseArchitecture):
         **kwargs,
     ):
 
-        bg_input = next(iter(bg_inputs.values()))
-        bg_act = self.bg.forward(bg_input)
-        rnn_inputs.update({"contextual": bg_act})
-        r_hidden, r_act = self.rnn.forward(inputs=rnn_inputs, **kwargs)
-        return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": bg_act}
+        # bg_input = next(iter(bg_inputs.values()))
+        # bg_act = self.bg
+        rnn_inputs.update({"contextual": self.bg.T})
+        r_hidden, r_act = self.rnn.forward(inputs={}, **kwargs)
+        return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": self.bg}
 
     def description(
         self,
@@ -231,13 +235,20 @@ class RNNStaticBG(BaseArchitecture):
             dt=dt,
             tau=tau,
         )
-        self.bg = MLP(
-            layer_sizes=bg_layer_sizes,
-            non_linearity=bg_nfn,
-            input_size=bg_input_size,
-            output_size=nbg,
-            include_bias=include_bias,
-        )
+
+        self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
+        self.bg_gain = nn.Parameter(torch.tensor(1.0))
+        if bg_nfn is None:
+            self.bg_nfn = nn.Sigmoid()
+        else:
+            self.bg_nfn = bg_nfn
+        # self.bg = MLP(
+        #     layer_sizes=bg_layer_sizes,
+        #     non_linearity=bg_nfn,
+        #     input_size=bg_input_size,
+        #     output_size=nbg,
+        #     include_bias=include_bias,
+        # )
 
     def set_outputs(self):
         self.output_names = ["r_hidden", "r_act", "bg_act"]
@@ -249,8 +260,8 @@ class RNNStaticBG(BaseArchitecture):
         **kwargs,
     ):
 
-        bg_input = next(iter(bg_inputs.values()))
-        bg_act = self.bg(bg_input)
+        # bg_input = next(iter(bg_inputs.values()))
+        bg_act = nn.ReLU()(self.bg_gain) * self.bg_nfn(self.bg)
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
         return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": bg_act}
 

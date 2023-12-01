@@ -178,17 +178,17 @@ class ThalamicRNN(Module):
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
-        # self.U = nn.Parameter(
-        #     torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
-        #     requires_grad=False,
-        # )
-        # self.V = nn.Parameter(
-        #     torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
-        #     requires_grad=False,
-        # )
-        U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
-        self.U = nn.Parameter(torchify(U), requires_grad=True)
-        self.V = nn.Parameter(torchify(V), requires_grad=False)
+        self.U = nn.Parameter(
+            torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
+            requires_grad=False,
+        )
+        self.V = nn.Parameter(
+            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
+            requires_grad=False,
+        )
+        # U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
+        # self.U = nn.Parameter(torchify(U), requires_grad=False)
+        # self.V = nn.Parameter(torchify(V), requires_grad=False)
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
@@ -256,9 +256,9 @@ class ThalamicRNN(Module):
         for input_name, input_value in inputs.items():
             out += input_value @ self.I[input_name]
 
-        r_mat = torch.diag_embed(r_thalamic)
-        bg_tensor = torch.matmul(self.U, torch.matmul(r_mat, self.V))
-        rec_input = torch.matmul(bg_tensor, self.r.unsqueeze(2)).squeeze()
+        # r_mat = torch.diag_embed(r_thalamic)
+        # bg_tensor = torch.matmul(self.U, torch.matmul(r_mat, self.V))
+        # rec_input = torch.matmul(bg_tensor, self.r.unsqueeze(2)).squeeze()
 
         # rec_input = torch.einsum(
         #     "ij, kj, jl, ki -> kl", self.U, r_thalamic, self.V, self.r
@@ -266,11 +266,10 @@ class ThalamicRNN(Module):
 
         x = self.x + self.dt / self.tau * (
             self.noise_model(
-                -self.x + self.r @ self.J + rec_input + self.B + out,
+                -self.x + self.r @ (r_thalamic * self.J) + self.B + out,
                 noise_scale,
             )
         )
-
         r = self.nonlinearity(x)
         self.x = x
         self.r = r

@@ -27,17 +27,24 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
         self.lr = lr
         self.optimizer = None
         self.lr_scheduler = None
+        self.network.test_loss = []
 
     def configure_optimizers(self):
         """"""
         self.optimizer = torch.optim.Adam(
-            self.network.parameters(), weight_decay=1e-3, lr=self.lr
+            self.network.parameters(), weight_decay=0, lr=self.lr
         )
+        # self.lr_scheduler = {
+        #     "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+        #         self.optimizer,
+        #     ),
+        #     "monitor": "val_loss",
+        #     "name": "lr_rate",
+        # }
         self.lr_scheduler = {
             "scheduler": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                self.optimizer, 50, T_mult=2
+                self.optimizer, T_0=50, T_mult=1
             ),
-            "name": "lr_rate",
         }
         return [self.optimizer], [self.lr_scheduler]
         # return self.optimizer
@@ -478,10 +485,9 @@ class MultiGainPacMan(Task):
             **kwargs,
         )
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["original_model"])
         self.network.params.update({"task": "MultiGainPacMan"})
         self.network.params.update(kwargs)
-
         self.network.Wout = nn.Parameter(
             torchify(np.random.randn(number_of_neurons, 1) / np.sqrt(1))
         )
@@ -530,7 +536,9 @@ class MultiGainPacMan(Task):
                 "target_height": targets[ti][:, None],
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
-            force_store[ti] = outputs["r_act"] @ self.network.Wout
+            force_store[ti] = torch.clamp(
+                outputs["r_act"] @ self.network.Wout, -1e4, 1e4
+            )
             # acceleration = (
             #     (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
             #     - velocity * contexts[1][:, None]
@@ -561,7 +569,7 @@ class MultiGainPacMan(Task):
         model_output: torch.Tensor,
         network_energy: Optional[dict] = None,
         optimal_forces: Optional[torch.Tensor] = None,
-        use_optimal: bool = True,
+        use_optimal: bool = False,
     ) -> dict:
         if optimal_forces is None:
             use_optimal = False
@@ -702,13 +710,14 @@ class MultiGainPacMan(Task):
         )
         self.log("hp/metric_2", loss["trajectory"], sync_dist=True)
         self.log("hp_metric", loss["trajectory"], sync_dist=True)
+        self.network.test_loss.append(loss["trajectory"].cpu().numpy())
         return loss["total"]
 
     def evaluate_training(self, batch, original_network: Optional[Task] = None):
         x, y = batch
         with torch.no_grad():
             positions, _, energies = self.forward(x.T, y.T, noise_scale=0)
-            bg_outputs = self.network.bg(x)
+            bg_outputs = self.network.bg.detach()  # (x)
             if original_network is not None:
                 positions_initial, _, _ = original_network(x.T, y.T, noise_scale=0)
                 outputs_initial = positions_initial.squeeze().detach().cpu().numpy().T
@@ -742,12 +751,12 @@ class MultiGainPacMan(Task):
         new_x = x - min_vals
         max_x, _ = new_x.max(axis=0)
         normed_x = (new_x / max_x).detach().numpy()
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8), subplot_kw={"projection": "3d"})
-        ax.scatter(bg_pca[:, 0], bg_pca[:, 1], bg_pca[:, 2], c=normed_x)
-        ax.set_xlabel("PC1")
-        ax.set_ylabel("PC2")
-        ax.set_zlabel("PC3")
-        plt.pause(0.1)
+        # fig, ax = plt.subplots(1, 1, figsize=(12, 8), subplot_kw={"projection": "3d"})
+        # ax.scatter(bg_pca[:, 0], bg_pca[:, 1], bg_pca[:, 2], c=normed_x)
+        # ax.set_xlabel("PC1")
+        # ax.set_ylabel("PC2")
+        # ax.set_zlabel("PC3")
+        # plt.pause(0.1)
 
     def change_context(self, batch, new_context: Tuple = (1, 0, -1)):
 
