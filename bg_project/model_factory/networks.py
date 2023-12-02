@@ -266,7 +266,9 @@ class ThalamicRNN(Module):
         for input_name, input_value in inputs.items():
             out += input_value @ self.I[input_name]
 
-        r_mat = torch.diag_embed(self.bg_nonlinearity(r_thalamic))
+        r_mat = torch.diag_embed(
+            2 * self.bg_nonlinearity(r_thalamic)
+        )  # Optional centers bg_nonlinearity at 1
         thalamic_drive = self.th_nonlinearity(self.r @ self.V.T)
         gain_modulated_drive = torch.matmul(r_mat, thalamic_drive.T)
         indices = range(self.r.shape[0])
