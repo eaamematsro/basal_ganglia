@@ -252,7 +252,7 @@ class ThalamicRNN(Module):
 
     def forward(
         self,
-        r_thalamic,
+        r_thalamic: Optional[torch.Tensor] = None,
         inputs: Optional[Dict[str, torch.Tensor]] = None,
         noise_scale: float = 1,
         validate_inputs: bool = False,
@@ -265,6 +265,9 @@ class ThalamicRNN(Module):
         out = 0
         for input_name, input_value in inputs.items():
             out += input_value @ self.I[input_name]
+
+        if r_thalamic is None:
+            r_thalamic = torch.zeros((self.r.shape[0], self.U.shape[1]))
 
         r_mat = torch.diag_embed(
             2 * self.bg_nonlinearity(r_thalamic)
