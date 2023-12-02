@@ -235,9 +235,12 @@ class RNNStaticBG(BaseArchitecture):
             dt=dt,
             tau=tau,
         )
-
-        self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
-        self.bg_gain = nn.Parameter(torch.tensor(1.0))
+        self.bg = MLP(
+            input_size=bg_input_size,
+            include_bias=include_bias,
+            output_size=nbg,
+        )
+        # self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
         if bg_nfn is None:
             self.bg_nfn = nn.Sigmoid()
         else:
