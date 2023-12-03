@@ -621,7 +621,7 @@ def transfer_network_weights(
         if key in source_keys
     ]
 
-    target_model.load_state_dict(target_state_dict)
+    target_model.load_state_dict(target_state_dict, strict=False)
     source_names = [name for name, _ in source.named_parameters()]
 
     if freeze:
