@@ -87,7 +87,7 @@ class SineDataset(Dataset):
                 (times - pulse_start - delay) * frequency * dt
             )
             targets[: (pulse_start + delay), idx] = 0
-            targets[(pulse_stop + delay):, idx] = 0
+            targets[(pulse_stop + delay) :, idx] = 0
             parameters[:, :, idx] = np.array([amplitude, frequency])[:, None]
 
         pulses = torchify(gaussian_filter1d(timing_pulses, sigma=5, axis=1))
