@@ -332,18 +332,22 @@ class RNNGMM(BaseArchitecture):
         bg_inputs: Dict[str, torch.Tensor],
         rnn_inputs: Optional[Dict[str, torch.Tensor]] = None,
         tau: float = 1.0,
-        hard: bool = False,
+        hard: bool = True,
         **kwargs,
     ):
 
-        classifier_input = next(iter(bg_inputs.values()))
+        classifier_input = next(iter(bg_inputs.values()), None)
         logits = self.classifier(classifier_input)
 
-        clusters = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
-        pdb.set_trace()
-        bg_act = self.bg(clusters)
+        cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+        bg_act = self.bg(cluster_probs)
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
-        return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": bg_act}
+        return {
+            "r_hidden": r_hidden,
+            "r_act": r_act,
+            "bg_act": bg_act,
+            "cluster_probs": cluster_probs,
+        }
 
     def description(
         self,

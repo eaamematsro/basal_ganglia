@@ -582,14 +582,20 @@ class GaussianMixtureModel(Module):
             )
         )
 
-    def forward(self, cluster: torch.Tensor):
-        l_cluster = cluster.long()
-        z = self.means[l_cluster] + (
-            torch.sqrt(torch.exp(self.cov[l_cluster]))
-            * torch.randn(cluster.shape[0], self.means.shape[1])
-        )
-        return z
+    def forward(self, cluster_probs: torch.Tensor):
+        """
 
+        Args:
+            cluster_probs: Normalized probability of each cluster. [Batch, Cluster]
+
+        Returns:
+            z: Sampled latents. [batch, latent]
+
+        """
+        means = (cluster_probs[:, :, None] * self.means).sum(dim=1)
+        covs = (cluster_probs[:, :, None] * torch.sqrt(torch.exp(self.cov))).sum(dim=1)
+        z = means + (covs * torch.randn(cluster_probs.shape[0], self.means.shape[1]))
+        return z
 
 
 # TODO(eamematsro): Add a feedforward multicontext network
