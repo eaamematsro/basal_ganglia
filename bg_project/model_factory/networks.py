@@ -190,11 +190,11 @@ class ThalamicRNN(Module):
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
         self.U = nn.Parameter(
             torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
-            requires_grad=False,
+            requires_grad=True,
         )
         self.V = nn.Parameter(
             torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
-            requires_grad=False,
+            requires_grad=True,
         )
         # U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
         # self.U = nn.Parameter(torchify(U), requires_grad=False)
@@ -572,6 +572,7 @@ class GaussianMixtureModel(Module):
     def __init__(self, number_of_clusters: int = 5, latent_dimension: int = 10):
         super().__init__()
 
+        self.nclusters = number_of_clusters
         self.means = nn.Parameter(
             torchify(np.random.randn(number_of_clusters, latent_dimension))
         )
@@ -594,7 +595,12 @@ class GaussianMixtureModel(Module):
         """
         means = (cluster_probs[:, :, None] * self.means).sum(dim=1)
         covs = (cluster_probs[:, :, None] * torch.sqrt(torch.exp(self.cov))).sum(dim=1)
-        z = means + (covs * torch.randn(cluster_probs.shape[0], self.means.shape[1]))
+        z = means + (
+            covs
+            * torch.randn(
+                cluster_probs.shape[0], self.means.shape[1], device=cluster_probs.device
+            )
+        )
         return z
 
 

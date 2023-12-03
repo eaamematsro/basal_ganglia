@@ -336,10 +336,13 @@ class RNNGMM(BaseArchitecture):
         **kwargs,
     ):
 
-        classifier_input = next(iter(bg_inputs.values()), None)
-        logits = self.classifier(classifier_input)
+        if "cluster_probs" in bg_inputs.keys():
+            cluster_probs = bg_inputs["cluster_probs"]
+        else:
+            classifier_input = next(iter(bg_inputs.values()), None)
+            logits = self.classifier(classifier_input)
 
-        cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+            cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
         bg_act = self.bg(cluster_probs)
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
         return {
@@ -569,4 +572,5 @@ NETWORKS = {
     "RNNStaticBG": RNNStaticBG,
     "RNNFeedbackBG": RNNFeedbackBG,
     "RNNMultiContextInput": RNNMultiContextInput,
+    "GMM": RNNGMM,
 }
