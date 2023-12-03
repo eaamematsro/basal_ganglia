@@ -19,12 +19,13 @@ from pathlib import Path
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
     def __init__(
-        self, network: str, lr: float = 1e-3, task: Optional[str] = None, **kwargs
+        self, network: str, lr: float = 1e-3, wd: float = 1e-3, task: Optional[str] = None, **kwargs
     ):
         super(Task, self).__init__()
         self.network = NETWORKS[network](task=task, **kwargs)
         self.type = network
         self.lr = lr
+        self.wd = wd
         self.optimizer = None
         self.lr_scheduler = None
         self.network.test_loss = []
@@ -32,7 +33,7 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
     def configure_optimizers(self):
         """"""
         self.optimizer = torch.optim.Adam(
-            self.network.parameters(), weight_decay=0, lr=self.lr
+            self.network.parameters(), weight_decay=self.wd, lr=self.lr
         )
         # self.lr_scheduler = {
         #     "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -43,7 +44,7 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
         # }
         self.lr_scheduler = {
             "scheduler": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                self.optimizer, T_0=50, T_mult=1
+                self.optimizer, T_0=50, T_mult=2
             ),
         }
         return [self.optimizer], [self.lr_scheduler]
@@ -404,10 +405,10 @@ class GenerateSinePL(Task):
 
         return position_store
 
-    def configure_optimizers(self):
-        """"""
-        self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
-        return self.optimizer
+    # def configure_optimizers(self):
+    #     """"""
+    #     self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
+    #     return self.optimizer
 
     def _log_loss(self, result_dict, stage: str) -> None:
         for k, v in result_dict.items():
@@ -430,7 +431,7 @@ class GenerateSinePL(Task):
         (timing_cues, contexts), y = batch
         inputs = {"cues": timing_cues, "parameters": contexts}
         positions = self.forward(inputs)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        loss = torch.log(((positions.squeeze() - y.T) ** 2).sum(dim=0).mean() + 1)
         self.log(
             "train_loss",
             loss,
@@ -448,7 +449,7 @@ class GenerateSinePL(Task):
         (timing_cues, contexts), y = batch
         inputs = {"cues": timing_cues, "parameters": contexts}
         positions = self.forward(inputs)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        loss = torch.log(((positions.squeeze() - y.T) ** 2).sum(dim=0).mean() + 1)
         self.log(
             "val_loss",
             loss,
@@ -467,7 +468,9 @@ class GenerateSinePL(Task):
         (timing_cues, contexts), y = batch
         inputs = {"cues": timing_cues, "parameters": contexts}
         positions = self.forward(inputs)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T.squeeze())
+        loss = torch.log(
+            ((positions.squeeze() - y.squeeze().T) ** 2).sum(dim=0).mean() + 1
+        )
         self.log(
             "test_loss",
             loss,
