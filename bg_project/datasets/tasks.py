@@ -334,6 +334,7 @@ class GenerateSinePL(Task):
             nbg=nbg,
             input_sources=rnn_input_source,
             include_bias=False,
+            bg_input_size=2,
             **kwargs,
         )
         self.save_hyperparameters()
@@ -373,8 +374,6 @@ class GenerateSinePL(Task):
         cues = inputs["cues"]
         parameters = inputs["parameters"]
 
-        # if go_cues.ndim == 1:
-        #     go_cues = go_cues[:, None]
         batch_size = cues.shape[0]
         position_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
@@ -385,13 +384,14 @@ class GenerateSinePL(Task):
                 (batch_size, self.network.bg.nclusters), device=self.network.Wout.device
             )
             cluster_probs[:, 0] = 1
-            bg_inputs = {"context": context_input, "cluster_probs": cluster_probs}
-        else:
-            bg_inputs = {"context": context_input}
+            bg_inputs = {"cluster_probs": cluster_probs}
 
+        else:
+            bg_inputs = {}
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):
+            bg_inputs.update({"context": parameters[:, :, ti]})
             rnn_input = {
                 "cues": cues[:, :, ti],
             }
