@@ -317,13 +317,16 @@ class GenerateSinePL(Task):
         self,
         network: Optional[str] = "RNNFeedbackBG",
         nneurons: int = 150,
-        duration: int = 500,
+        duration: int = 300,
         nbg: int = 10,
+        n_context: int = 1,
         **kwargs,
     ):
 
-        kwargs["ncontext"] = 1
-        rnn_input_source = {"go": (1, True)}
+        rnn_input_source = {
+            "cues": (2, True),
+            "target_parameters": (2, True),
+        }
 
         super(GenerateSinePL, self).__init__(
             network=network,
@@ -335,12 +338,14 @@ class GenerateSinePL(Task):
         )
         self.save_hyperparameters()
         self.network.params.update({"task": "SineGeneration"})
+        self.network.params.update({"ncontexst": n_context})
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
             torchify(np.random.randn(nneurons, 1) / np.sqrt(1))
         )
         self.duration = duration
+        self.ncontext = n_context
         self.dt = self.network.rnn.dt
         self.replay_buffer = None
         self.Pulses = None
@@ -355,24 +360,41 @@ class GenerateSinePL(Task):
         self.configure_optimizers()
         self.results_path = set_results_path(type(self).__name__)[-1]
 
+        if self.ncontext == 1:
+            self.provide_probs = True
+        else:
+            self.provide_probs = False
+
     def forward(
         self,
-        go_cues: torch.Tensor,
+        inputs: dict,
     ):
 
-        if go_cues.ndim == 1:
-            go_cues = go_cues[:, None]
-        batch_size = go_cues.shape[1]
-        # pdb.set_trace()
+        cues = inputs["cues"]
+        parameters = inputs["parameters"]
+
+        # if go_cues.ndim == 1:
+        #     go_cues = go_cues[:, None]
+        batch_size = cues.shape[0]
         position_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
         )
         context_input = torch.ones((batch_size, 1), device=self.network.Wout.device)
-        bg_inputs = {"context": context_input}
+        if self.provide_probs:
+            cluster_probs = torch.zeros(
+                (batch_size, self.network.bg.nclusters), device=self.network.Wout.device
+            )
+            cluster_probs[:, 0] = 1
+            bg_inputs = {"context": context_input, "cluster_probs": cluster_probs}
+        else:
+            bg_inputs = {"context": context_input}
+
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):
-            rnn_input = {"go": go_cues[ti][:, None]}
+            rnn_input = {
+                "cues": cues[:, :, ti],
+            }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
             position_store[ti] = outputs["r_act"] @ self.network.Wout
 
@@ -401,8 +423,9 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs)
         loss = nn.functional.mse_loss(positions.squeeze(), y.T)
         self.log(
             "train_loss",
@@ -418,8 +441,9 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs)
         loss = nn.functional.mse_loss(positions.squeeze(), y.T)
         self.log(
             "val_loss",
@@ -436,8 +460,9 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs)
         loss = nn.functional.mse_loss(positions.squeeze(), y.T.squeeze())
         self.log(
             "test_loss",
