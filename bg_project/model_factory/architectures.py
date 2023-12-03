@@ -239,12 +239,14 @@ class RNNStaticBG(BaseArchitecture):
             input_size=bg_input_size,
             include_bias=include_bias,
             output_size=nbg,
+            non_linearity=bg_nfn,
+            layer_sizes=bg_layer_sizes,
         )
         # self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
-        if bg_nfn is None:
-            self.bg_nfn = nn.Sigmoid()
-        else:
-            self.bg_nfn = bg_nfn
+        # if bg_nfn is None:
+        #     self.bg_nfn = nn.Sigmoid()
+        # else:
+        #     self.bg_nfn = bg_nfn
         # self.bg = MLP(
         #     layer_sizes=bg_layer_sizes,
         #     non_linearity=bg_nfn,
@@ -263,8 +265,83 @@ class RNNStaticBG(BaseArchitecture):
         **kwargs,
     ):
 
-        # bg_input = next(iter(bg_inputs.values()))
-        bg_act = nn.ReLU()(self.bg_gain) * self.bg_nfn(self.bg)
+        bg_input = next(iter(bg_inputs.values()))
+        bg_act = self.bg(bg_input)
+        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
+        return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": bg_act}
+
+    def description(
+        self,
+    ):
+        """"""
+        print("An RNN who's weights are multiplied by a static gain from the BG")
+
+
+class RNNGMM(BaseArchitecture):
+    def __init__(
+        self,
+        nneurons: int = 100,
+        n_classes: int = 10,
+        nbg: int = 20,
+        non_linearity: Optional[nn.Module] = None,
+        g0: float = 1.2,
+        input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+        dt: float = 0.05,
+        tau: float = 0.15,
+        bg_layer_sizes: Optional[Tuple[int, ...]] = (25, 15, 10),
+        bg_nfn: Optional[nn.Module] = None,
+        bg_input_size: Optional[int] = 1,
+        include_bias: bool = False,
+        **kwargs,
+    ):
+        super(RNNGMM, self).__init__(**kwargs)
+        self.params = {
+            "n_hidden": nneurons,
+            "nbg": nbg,
+            "inputs": input_sources,
+            "bg_layers": bg_layer_sizes,
+            "network": type(self).__name__,
+        }
+        self.rnn = ThalamicRNN(
+            nneurons=nneurons,
+            nbg=nbg,
+            non_linearity=non_linearity,
+            g0=g0,
+            input_sources=input_sources,
+            dt=dt,
+            tau=tau,
+        )
+
+        self.classifier = MLP(
+            input_size=bg_input_size,
+            layer_sizes=bg_layer_sizes,
+            output_size=n_classes,
+            include_bias=include_bias,
+            non_linearity=bg_nfn,
+        )
+
+        self.bg = GaussianMixtureModel(
+            number_of_clusters=n_classes, latent_dimension=nbg
+        )
+
+    def set_outputs(self):
+        self.output_names = ["r_hidden", "r_act", "bg_act"]
+
+    def forward(
+        self,
+        bg_inputs: Dict[str, torch.Tensor],
+        rnn_inputs: Optional[Dict[str, torch.Tensor]] = None,
+        tau: float = 1.0,
+        hard: bool = False,
+        **kwargs,
+    ):
+
+        classifier_input = next(iter(bg_inputs.values()))
+        logits = self.classifier(classifier_input)
+
+        clusters = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+        pdb.set_trace()
+        bg_act = self.bg(clusters)
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
         return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": bg_act}
 

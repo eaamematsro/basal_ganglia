@@ -583,13 +583,13 @@ class GaussianMixtureModel(Module):
         )
 
     def forward(self, cluster: torch.Tensor):
-        nonlinearity = nn.ReLU()
         l_cluster = cluster.long()
         z = self.means[l_cluster] + (
-            torch.sqrt(nonlinearity(self.cov[l_cluster]))
+            torch.sqrt(torch.exp(self.cov[l_cluster]))
             * torch.randn(cluster.shape[0], self.means.shape[1])
         )
         return z
+
 
 
 # TODO(eamematsro): Add a feedforward multicontext network
