@@ -379,13 +379,17 @@ class GenerateSinePL(Task):
             self.duration, batch_size, 1, device=self.network.Wout.device
         )
         context_input = torch.ones((batch_size, 1), device=self.network.Wout.device)
-        if self.provide_probs:
-            cluster_probs = torch.zeros(
-                (batch_size, self.network.bg.nclusters), device=self.network.Wout.device
-            )
-            cluster_probs[:, 0] = 1
-            bg_inputs = {"cluster_probs": cluster_probs}
+        if hasattr(self, "bg"):
+            if self.provide_probs:
+                cluster_probs = torch.zeros(
+                    (batch_size, self.network.bg.nclusters),
+                    device=self.network.Wout.device,
+                )
+                cluster_probs[:, 0] = 1
+                bg_inputs = {"cluster_probs": cluster_probs}
 
+            else:
+                bg_inputs = {}
         else:
             bg_inputs = {}
         self.network.rnn.reset_state(batch_size)
@@ -475,6 +479,24 @@ class GenerateSinePL(Task):
         self.log("hp/metric_2", loss, sync_dist=True)
         self.log("hp_metric", loss, sync_dist=True)
         return loss
+
+    def evaluate_training(self, batch, original_network: Optional[Task] = None):
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        with torch.no_grad():
+            positions = self.forward(inputs)
+
+        targets = y.detach().cpu().numpy()
+        outputs = positions.squeeze().detach().cpu().numpy().T
+        timing_cues = timing_cues.detach().cpu().numpy()
+        plt.figure()
+        plt.plot(timing_cues[0, 0], label="Go Cue", ls="--", color="green")
+        plt.plot(timing_cues[0, 1], label="Stop Cue", ls="--", color="red")
+        plt.plot(targets[0], label="Target")
+        plt.plot(outputs[0], label="Trained Model Output")
+        plt.legend()
+        plt.pause(0.01)
+        pdb.set_trace()
 
 
 class MultiGainPacMan(Task):
