@@ -37,9 +37,9 @@ class SineDataset(Dataset):
         self,
         n_unique_pulses: int = 25,
         pulse_width: int = 10,
-        frequencies: tuple = (1, ),
+        frequencies: tuple = (1,),
         delay: int = 0,
-        amplitudes: tuple = (1, ),
+        amplitudes: tuple = (1,),
         duration: int = 500,
         dt: float = 5e-2,
     ):
@@ -66,8 +66,6 @@ class SineDataset(Dataset):
 
         nsamples = n_unique_pulses**2 * len(amplitudes) * len(frequencies)
 
-        go_pulses = np.zeros((duration, nsamples))
-        stop_pulses = np.zeros((duration, nsamples))
         timing_pulses = np.zeros((2, duration, nsamples))
         targets = np.zeros((duration, nsamples))
         parameters = np.zeros((2, duration, nsamples))
