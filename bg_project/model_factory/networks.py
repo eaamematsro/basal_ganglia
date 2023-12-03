@@ -99,7 +99,7 @@ class RNN(Module):
     def forward(
         self,
         inputs: Dict[str, torch.Tensor],
-        noise_scale: float = 1,
+        noise_scale: float = 0.1,
         validate_inputs: bool = False,
         max_val: float = 1e3,
     ):
@@ -254,7 +254,7 @@ class ThalamicRNN(Module):
         self,
         r_thalamic: Optional[torch.Tensor] = None,
         inputs: Optional[Dict[str, torch.Tensor]] = None,
-        noise_scale: float = 1,
+        noise_scale: float = 0.1,
         validate_inputs: bool = False,
     ):
         if inputs is None:
