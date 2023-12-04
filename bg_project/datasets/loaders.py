@@ -57,7 +57,7 @@ class SineDataset(Dataset):
 
         super(SineDataset, self).__init__()
         start_times = np.linspace(
-            duration * 1 / 10, duration * 4 / 10, n_unique_pulses
+            duration * 1 / 10, duration * 2 / 10, n_unique_pulses
         ).astype(int)
 
         stop_times = np.linspace(

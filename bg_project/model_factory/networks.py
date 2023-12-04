@@ -596,7 +596,8 @@ class GaussianMixtureModel(Module):
         means = (cluster_probs[:, :, None] * self.means).sum(dim=1)
         covs = (cluster_probs[:, :, None] * torch.sqrt(torch.exp(self.cov))).sum(dim=1)
         z = means + (
-            covs
+            0
+            * covs
             * torch.randn(
                 cluster_probs.shape[0], self.means.shape[1], device=cluster_probs.device
             )

@@ -19,7 +19,12 @@ from pathlib import Path
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
     def __init__(
-        self, network: str, lr: float = 1e-3, wd: float = 1e-3, task: Optional[str] = None, **kwargs
+        self,
+        network: str,
+        lr: float = 1e-3,
+        wd: float = 1e-6,
+        task: Optional[str] = None,
+        **kwargs,
     ):
         super(Task, self).__init__()
         self.network = NETWORKS[network](task=task, **kwargs)
@@ -367,10 +372,7 @@ class GenerateSinePL(Task):
         else:
             self.provide_probs = False
 
-    def forward(
-        self,
-        inputs: dict,
-    ):
+    def forward(self, inputs: dict, **kwargs):
 
         cues = inputs["cues"]
         parameters = inputs["parameters"]
@@ -379,7 +381,6 @@ class GenerateSinePL(Task):
         position_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
         )
-        context_input = torch.ones((batch_size, 1), device=self.network.Wout.device)
         if hasattr(self, "bg"):
             if self.provide_probs:
                 cluster_probs = torch.zeros(
@@ -400,7 +401,7 @@ class GenerateSinePL(Task):
             rnn_input = {
                 "cues": cues[:, :, ti],
             }
-            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
+            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
             position_store[ti] = outputs["r_act"] @ self.network.Wout
 
         return position_store

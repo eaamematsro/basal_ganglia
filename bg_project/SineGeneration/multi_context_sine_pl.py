@@ -25,7 +25,7 @@ def split_dataset(dataset, fractions: Sequence = (0.6, 0.2, 0.2)):
 if __name__ == "__main__":
     duration = 300
     torch.set_float32_matmul_precision("medium")
-    simple_model = GenerateSinePL(network="VanillaRNN", duration=duration)
+    simple_model = GenerateSinePL(network="GMM", duration=duration)
 
     dataset = SineDataset(duration=duration)
     batch_size = 64
@@ -53,11 +53,11 @@ if __name__ == "__main__":
         model=simple_model, train_dataloaders=train_loader, val_dataloaders=val_loader
     )
 
-    # trainer.test(simple_model, dataloaders=DataLoader(test_set, num_workers=10))
+    trainer.test(simple_model, dataloaders=DataLoader(test_set, num_workers=10))
 
     # simple_model.save_model()
-    for batch_idx, batch in enumerate(val_loader):
-        simple_model.evaluate_training(batch)
+    # for batch_idx, batch in enumerate(val_loader):
+    #     simple_model.evaluate_training(batch)
     pdb.set_trace()
 
     for nbg in [10]:
@@ -77,7 +77,8 @@ if __name__ == "__main__":
         # thalamic_model.network.rnn.reconfigure_u_v()
 
         train_set, val_set, test_set = split_dataset(
-            SineDataset(amplitudes=(0.75, 1.25), duration=duration), (0.6, 0.2, 0.2)
+            SineDataset(amplitudes=(0.5, 1.5), frequencies=(1,), duration=duration),
+            (0.6, 0.2, 0.2),
         )
 
         train_loader = DataLoader(
@@ -105,4 +106,6 @@ if __name__ == "__main__":
 
         trainer.test(thalamic_model, dataloaders=DataLoader(test_set, num_workers=10))
         thalamic_model.save_model()
+        for batch_idx, batch in enumerate(val_loader):
+            thalamic_model.evaluate_training(batch)
         pdb.set_trace()
