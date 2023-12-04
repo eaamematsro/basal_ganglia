@@ -99,7 +99,7 @@ class RNN(Module):
     def forward(
         self,
         inputs: Dict[str, torch.Tensor],
-        noise_scale: float = 1,
+        noise_scale: float = 0.1,
         validate_inputs: bool = False,
         max_val: float = 1e3,
     ):
@@ -146,6 +146,8 @@ class ThalamicRNN(Module):
         nneurons: int = 100,
         nbg: int = 20,
         non_linearity: Optional[nn.Module] = None,
+        th_non_linearity: Optional[nn.Module] = None,
+        bg_non_linearity: Optional[nn.Module] = None,
         g0: float = 1.2,
         input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
         dt: float = 5e-2,
@@ -157,10 +159,18 @@ class ThalamicRNN(Module):
         if non_linearity is None:
             non_linearity = nn.Softplus()
 
+        if th_non_linearity is None:
+            th_non_linearity = nn.Softplus()
+
+        if bg_non_linearity is None:
+            bg_non_linearity = nn.Sigmoid()
+
         if noise_model is None:
             noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
 
         self.nonlinearity = non_linearity
+        self.th_nonlinearity = th_non_linearity
+        self.bg_nonlinearity = bg_non_linearity
 
         self.I = nn.ParameterDict({})
 
@@ -178,17 +188,17 @@ class ThalamicRNN(Module):
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
-        # self.U = nn.Parameter(
-        #     torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
-        #     requires_grad=False,
-        # )
-        # self.V = nn.Parameter(
-        #     torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
-        #     requires_grad=False,
-        # )
-        U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
-        self.U = nn.Parameter(torchify(U), requires_grad=True)
-        self.V = nn.Parameter(torchify(V), requires_grad=False)
+        self.U = nn.Parameter(
+            torchify(np.random.randn(nneurons, nbg) / np.sqrt(nneurons)),
+            requires_grad=True,
+        )
+        self.V = nn.Parameter(
+            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
+            requires_grad=True,
+        )
+        # U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
+        # self.U = nn.Parameter(torchify(U), requires_grad=False)
+        # self.V = nn.Parameter(torchify(V), requires_grad=False)
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau
@@ -242,9 +252,9 @@ class ThalamicRNN(Module):
 
     def forward(
         self,
-        r_thalamic,
+        r_thalamic: Optional[torch.Tensor] = None,
         inputs: Optional[Dict[str, torch.Tensor]] = None,
-        noise_scale: float = 1,
+        noise_scale: float = 0.1,
         validate_inputs: bool = False,
     ):
         if inputs is None:
@@ -256,21 +266,24 @@ class ThalamicRNN(Module):
         for input_name, input_value in inputs.items():
             out += input_value @ self.I[input_name]
 
-        r_mat = torch.diag_embed(r_thalamic)
-        bg_tensor = torch.matmul(self.U, torch.matmul(r_mat, self.V))
-        rec_input = torch.matmul(bg_tensor, self.r.unsqueeze(2)).squeeze()
+        if r_thalamic is None:
+            r_thalamic = torch.zeros((self.r.shape[0], self.U.shape[1]))
 
-        # rec_input = torch.einsum(
-        #     "ij, kj, jl, ki -> kl", self.U, r_thalamic, self.V, self.r
-        # )
+        r_mat = torch.diag_embed(
+            2 * self.bg_nonlinearity(r_thalamic)
+        )  # Optional centers bg_nonlinearity at 1
+        thalamic_drive = self.th_nonlinearity(self.r @ self.V.T)
+        gain_modulated_drive = torch.matmul(r_mat, thalamic_drive.T)
+        indices = range(self.r.shape[0])
+        effective_drive = gain_modulated_drive[indices, :, indices]
+        effective_input = effective_drive @ self.U.T
 
         x = self.x + self.dt / self.tau * (
             self.noise_model(
-                -self.x + self.r @ self.J + rec_input + self.B + out,
+                -self.x + self.r @ self.J + effective_input + self.B + out,
                 noise_scale,
             )
         )
-
         r = self.nonlinearity(x)
         self.x = x
         self.r = r
@@ -559,6 +572,7 @@ class GaussianMixtureModel(Module):
     def __init__(self, number_of_clusters: int = 5, latent_dimension: int = 10):
         super().__init__()
 
+        self.nclusters = number_of_clusters
         self.means = nn.Parameter(
             torchify(np.random.randn(number_of_clusters, latent_dimension))
         )
@@ -569,12 +583,24 @@ class GaussianMixtureModel(Module):
             )
         )
 
-    def forward(self, cluster: torch.Tensor):
-        nonlinearity = nn.ReLU()
-        l_cluster = cluster.long()
-        z = self.means[l_cluster] + (
-            torch.sqrt(nonlinearity(self.cov[l_cluster]))
-            * torch.randn(cluster.shape[0], self.means.shape[1])
+    def forward(self, cluster_probs: torch.Tensor):
+        """
+
+        Args:
+            cluster_probs: Normalized probability of each cluster. [Batch, Cluster]
+
+        Returns:
+            z: Sampled latents. [batch, latent]
+
+        """
+        means = (cluster_probs[:, :, None] * self.means).sum(dim=1)
+        covs = (cluster_probs[:, :, None] * torch.sqrt(torch.exp(self.cov))).sum(dim=1)
+        z = means + (
+            0
+            * covs
+            * torch.randn(
+                cluster_probs.shape[0], self.means.shape[1], device=cluster_probs.device
+            )
         )
         return z
 
@@ -596,7 +622,7 @@ def transfer_network_weights(
         if key in source_keys
     ]
 
-    target_model.load_state_dict(target_state_dict)
+    target_model.load_state_dict(target_state_dict, strict=False)
     source_names = [name for name, _ in source.named_parameters()]
 
     if freeze:

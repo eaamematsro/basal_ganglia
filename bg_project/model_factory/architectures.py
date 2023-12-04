@@ -4,6 +4,7 @@ import os
 import re
 from abc import ABC
 
+import numpy as np
 import torch
 import pickle
 import json
@@ -12,6 +13,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
 from torch.distributions.multivariate_normal import MultivariateNormal
+from model_factory.factory_utils import torchify
 from .networks import (
     MLP,
     MultiHeadMLP,
@@ -164,13 +166,15 @@ class RNNMultiContextInput(BaseArchitecture):
             dt=dt,
             tau=tau,
         )
-        self.bg = MLP(
-            layer_sizes=bg_layer_sizes,
-            non_linearity=bg_nfn,
-            input_size=bg_input_size,
-            output_size=nbg,
-            include_bias=include_bias,
-        )
+        # self.bg = MLP(
+        #     layer_sizes=bg_layer_sizes,
+        #     non_linearity=bg_nfn,
+        #     input_size=bg_input_size,
+        #     output_size=nbg,
+        #     include_bias=include_bias,
+        # )
+
+        self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
 
     def set_outputs(self):
         self.output_names = ["r_hidden", "r_act", "bg_act"]
@@ -182,11 +186,11 @@ class RNNMultiContextInput(BaseArchitecture):
         **kwargs,
     ):
 
-        bg_input = next(iter(bg_inputs.values()))
-        bg_act = self.bg.forward(bg_input)
-        rnn_inputs.update({"contextual": bg_act})
-        r_hidden, r_act = self.rnn.forward(inputs=rnn_inputs, **kwargs)
-        return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": bg_act}
+        # bg_input = next(iter(bg_inputs.values()))
+        # bg_act = self.bg
+        rnn_inputs.update({"contextual": self.bg.T})
+        r_hidden, r_act = self.rnn.forward(inputs={}, **kwargs)
+        return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": self.bg}
 
     def description(
         self,
@@ -232,12 +236,24 @@ class RNNStaticBG(BaseArchitecture):
             tau=tau,
         )
         self.bg = MLP(
-            layer_sizes=bg_layer_sizes,
-            non_linearity=bg_nfn,
             input_size=bg_input_size,
-            output_size=nbg,
             include_bias=include_bias,
+            output_size=nbg,
+            non_linearity=bg_nfn,
+            layer_sizes=bg_layer_sizes,
         )
+        # self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
+        # if bg_nfn is None:
+        #     self.bg_nfn = nn.Sigmoid()
+        # else:
+        #     self.bg_nfn = bg_nfn
+        # self.bg = MLP(
+        #     layer_sizes=bg_layer_sizes,
+        #     non_linearity=bg_nfn,
+        #     input_size=bg_input_size,
+        #     output_size=nbg,
+        #     include_bias=include_bias,
+        # )
 
     def set_outputs(self):
         self.output_names = ["r_hidden", "r_act", "bg_act"]
@@ -259,6 +275,100 @@ class RNNStaticBG(BaseArchitecture):
     ):
         """"""
         print("An RNN who's weights are multiplied by a static gain from the BG")
+
+
+class RNNGMM(BaseArchitecture):
+    def __init__(
+        self,
+        nneurons: int = 100,
+        n_classes: int = 10,
+        nbg: int = 20,
+        non_linearity: Optional[nn.Module] = None,
+        g0: float = 1.2,
+        input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+        dt: float = 0.05,
+        tau: float = 0.15,
+        bg_layer_sizes: Optional[Tuple[int, ...]] = (25, 15, 10),
+        bg_nfn: Optional[nn.Module] = None,
+        bg_input_size: Optional[int] = 1,
+        include_bias: bool = False,
+        **kwargs,
+    ):
+        super(RNNGMM, self).__init__(**kwargs)
+        self.params = {
+            "n_hidden": nneurons,
+            "nbg": nbg,
+            "inputs": input_sources,
+            "bg_layers": bg_layer_sizes,
+            "network": type(self).__name__,
+        }
+        self.rnn = ThalamicRNN(
+            nneurons=nneurons,
+            nbg=nbg,
+            non_linearity=non_linearity,
+            g0=g0,
+            input_sources=input_sources,
+            dt=dt,
+            tau=tau,
+        )
+
+        self.classifier = MLP(
+            input_size=bg_input_size,
+            layer_sizes=bg_layer_sizes,
+            output_size=n_classes,
+            include_bias=include_bias,
+            non_linearity=bg_nfn,
+        )
+
+        self.bg = GaussianMixtureModel(
+            number_of_clusters=n_classes, latent_dimension=nbg
+        )
+
+    def set_outputs(self):
+        self.output_names = ["r_hidden", "r_act", "bg_act"]
+
+    def forward(
+        self,
+        bg_inputs: Dict[str, torch.Tensor],
+        rnn_inputs: Optional[Dict[str, torch.Tensor]] = None,
+        tau: float = 1.0,
+        hard: bool = True,
+        **kwargs,
+    ):
+
+        if "cluster_probs" in bg_inputs.keys():
+            cluster_probs = bg_inputs["cluster_probs"]
+        else:
+            classifier_input = next(iter(bg_inputs.values()), None)
+            logits = self.classifier(classifier_input)
+
+            cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+        bg_act = self.bg(cluster_probs)
+        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
+        return {
+            "r_hidden": r_hidden,
+            "r_act": r_act,
+            "bg_act": bg_act,
+            "cluster_probs": cluster_probs,
+        }
+
+    def description(
+        self,
+    ):
+        """"""
+        print("An RNN who's weights are multiplied by a static gain from the BG")
+
+    def swap_grad_state(
+        self, grad_state: bool = True, params_to_swap: Optional[list] = None
+    ):
+        if params_to_swap is None:
+            params_to_swap = [self.rnn.U, self.rnn.V, self.bg, self.classifier]
+        for param_group in params_to_swap:
+            if isinstance(param_group, torch.nn.parameter.Parameter):
+                param_group.requires_grad = grad_state
+            else:
+                for param in param_group.parameters():
+                    param.requires_grad = grad_state
 
 
 class RNNFeedbackBG(BaseArchitecture):
@@ -474,4 +584,5 @@ NETWORKS = {
     "RNNStaticBG": RNNStaticBG,
     "RNNFeedbackBG": RNNFeedbackBG,
     "RNNMultiContextInput": RNNMultiContextInput,
+    "GMM": RNNGMM,
 }

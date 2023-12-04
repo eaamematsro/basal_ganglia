@@ -19,25 +19,38 @@ from pathlib import Path
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
     def __init__(
-        self, network: str, lr: float = 1e-3, task: Optional[str] = None, **kwargs
+        self,
+        network: str,
+        lr: float = 1e-3,
+        wd: float = 1e-6,
+        task: Optional[str] = None,
+        **kwargs,
     ):
         super(Task, self).__init__()
         self.network = NETWORKS[network](task=task, **kwargs)
         self.type = network
         self.lr = lr
+        self.wd = wd
         self.optimizer = None
         self.lr_scheduler = None
+        self.network.test_loss = []
 
     def configure_optimizers(self):
         """"""
         self.optimizer = torch.optim.Adam(
-            self.network.parameters(), weight_decay=1e-3, lr=self.lr
+            self.network.parameters(), weight_decay=self.wd, lr=self.lr
         )
+        # self.lr_scheduler = {
+        #     "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+        #         self.optimizer,
+        #     ),
+        #     "monitor": "val_loss",
+        #     "name": "lr_rate",
+        # }
         self.lr_scheduler = {
             "scheduler": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                self.optimizer, 50, T_mult=2
+                self.optimizer, T_0=50, T_mult=2
             ),
-            "name": "lr_rate",
         }
         return [self.optimizer], [self.lr_scheduler]
         # return self.optimizer
@@ -310,13 +323,16 @@ class GenerateSinePL(Task):
         self,
         network: Optional[str] = "RNNFeedbackBG",
         nneurons: int = 150,
-        duration: int = 500,
+        duration: int = 300,
         nbg: int = 10,
+        n_context: int = 1,
         **kwargs,
     ):
 
-        kwargs["ncontext"] = 1
-        rnn_input_source = {"go": (1, True)}
+        rnn_input_source = {
+            "cues": (2, True),
+            "target_parameters": (2, True),
+        }
 
         super(GenerateSinePL, self).__init__(
             network=network,
@@ -324,16 +340,19 @@ class GenerateSinePL(Task):
             nbg=nbg,
             input_sources=rnn_input_source,
             include_bias=False,
+            bg_input_size=2,
             **kwargs,
         )
         self.save_hyperparameters()
         self.network.params.update({"task": "SineGeneration"})
+        self.network.params.update({"ncontexst": n_context})
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
             torchify(np.random.randn(nneurons, 1) / np.sqrt(1))
         )
         self.duration = duration
+        self.ncontext = n_context
         self.dt = self.network.rnn.dt
         self.replay_buffer = None
         self.Pulses = None
@@ -348,33 +367,49 @@ class GenerateSinePL(Task):
         self.configure_optimizers()
         self.results_path = set_results_path(type(self).__name__)[-1]
 
-    def forward(
-        self,
-        go_cues: torch.Tensor,
-    ):
+        if self.ncontext == 1:
+            self.provide_probs = True
+        else:
+            self.provide_probs = False
 
-        if go_cues.ndim == 1:
-            go_cues = go_cues[:, None]
-        batch_size = go_cues.shape[1]
-        # pdb.set_trace()
+    def forward(self, inputs: dict, **kwargs):
+
+        cues = inputs["cues"]
+        parameters = inputs["parameters"]
+
+        batch_size = cues.shape[0]
         position_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
         )
-        context_input = torch.ones((batch_size, 1), device=self.network.Wout.device)
-        bg_inputs = {"context": context_input}
+        if hasattr(self, "bg"):
+            if self.provide_probs:
+                cluster_probs = torch.zeros(
+                    (batch_size, self.network.bg.nclusters),
+                    device=self.network.Wout.device,
+                )
+                cluster_probs[:, 0] = 1
+                bg_inputs = {"cluster_probs": cluster_probs}
+
+            else:
+                bg_inputs = {}
+        else:
+            bg_inputs = {}
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):
-            rnn_input = {"go": go_cues[ti][:, None]}
-            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
+            bg_inputs.update({"context": parameters[:, :, ti]})
+            rnn_input = {
+                "cues": cues[:, :, ti],
+            }
+            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
             position_store[ti] = outputs["r_act"] @ self.network.Wout
 
         return position_store
 
-    def configure_optimizers(self):
-        """"""
-        self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
-        return self.optimizer
+    # def configure_optimizers(self):
+    #     """"""
+    #     self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
+    #     return self.optimizer
 
     def _log_loss(self, result_dict, stage: str) -> None:
         for k, v in result_dict.items():
@@ -394,9 +429,10 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs)
+        loss = torch.log(((positions.squeeze() - y.T) ** 2).sum(dim=0).mean() + 1)
         self.log(
             "train_loss",
             loss,
@@ -411,9 +447,10 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs)
+        loss = torch.log(((positions.squeeze() - y.T) ** 2).sum(dim=0).mean() + 1)
         self.log(
             "val_loss",
             loss,
@@ -429,9 +466,12 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T.squeeze())
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs)
+        loss = torch.log(
+            ((positions.squeeze() - y.squeeze().T) ** 2).sum(dim=0).mean() + 1
+        )
         self.log(
             "test_loss",
             loss,
@@ -443,6 +483,24 @@ class GenerateSinePL(Task):
         self.log("hp/metric_2", loss, sync_dist=True)
         self.log("hp_metric", loss, sync_dist=True)
         return loss
+
+    def evaluate_training(self, batch, original_network: Optional[Task] = None):
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        with torch.no_grad():
+            positions = self.forward(inputs)
+
+        targets = y.detach().cpu().numpy()
+        outputs = positions.squeeze().detach().cpu().numpy().T
+        timing_cues = timing_cues.detach().cpu().numpy()
+        plt.figure()
+        plt.plot(timing_cues[0, 0], label="Go Cue", ls="--", color="green")
+        plt.plot(timing_cues[0, 1], label="Stop Cue", ls="--", color="red")
+        plt.plot(targets[0], label="Target")
+        plt.plot(outputs[0], label="Trained Model Output")
+        plt.legend()
+        plt.pause(0.01)
+        pdb.set_trace()
 
 
 class MultiGainPacMan(Task):
@@ -478,10 +536,9 @@ class MultiGainPacMan(Task):
             **kwargs,
         )
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["original_model"])
         self.network.params.update({"task": "MultiGainPacMan"})
         self.network.params.update(kwargs)
-
         self.network.Wout = nn.Parameter(
             torchify(np.random.randn(number_of_neurons, 1) / np.sqrt(1))
         )
@@ -530,7 +587,9 @@ class MultiGainPacMan(Task):
                 "target_height": targets[ti][:, None],
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
-            force_store[ti] = outputs["r_act"] @ self.network.Wout
+            force_store[ti] = torch.clamp(
+                outputs["r_act"] @ self.network.Wout, -1e4, 1e4
+            )
             # acceleration = (
             #     (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
             #     - velocity * contexts[1][:, None]
@@ -561,7 +620,7 @@ class MultiGainPacMan(Task):
         model_output: torch.Tensor,
         network_energy: Optional[dict] = None,
         optimal_forces: Optional[torch.Tensor] = None,
-        use_optimal: bool = True,
+        use_optimal: bool = False,
     ) -> dict:
         if optimal_forces is None:
             use_optimal = False
@@ -702,13 +761,14 @@ class MultiGainPacMan(Task):
         )
         self.log("hp/metric_2", loss["trajectory"], sync_dist=True)
         self.log("hp_metric", loss["trajectory"], sync_dist=True)
+        self.network.test_loss.append(loss["trajectory"].cpu().numpy())
         return loss["total"]
 
     def evaluate_training(self, batch, original_network: Optional[Task] = None):
         x, y = batch
         with torch.no_grad():
             positions, _, energies = self.forward(x.T, y.T, noise_scale=0)
-            bg_outputs = self.network.bg(x)
+            bg_outputs = self.network.bg.detach()  # (x)
             if original_network is not None:
                 positions_initial, _, _ = original_network(x.T, y.T, noise_scale=0)
                 outputs_initial = positions_initial.squeeze().detach().cpu().numpy().T
@@ -742,12 +802,12 @@ class MultiGainPacMan(Task):
         new_x = x - min_vals
         max_x, _ = new_x.max(axis=0)
         normed_x = (new_x / max_x).detach().numpy()
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8), subplot_kw={"projection": "3d"})
-        ax.scatter(bg_pca[:, 0], bg_pca[:, 1], bg_pca[:, 2], c=normed_x)
-        ax.set_xlabel("PC1")
-        ax.set_ylabel("PC2")
-        ax.set_zlabel("PC3")
-        plt.pause(0.1)
+        # fig, ax = plt.subplots(1, 1, figsize=(12, 8), subplot_kw={"projection": "3d"})
+        # ax.scatter(bg_pca[:, 0], bg_pca[:, 1], bg_pca[:, 2], c=normed_x)
+        # ax.set_xlabel("PC1")
+        # ax.set_ylabel("PC2")
+        # ax.set_zlabel("PC3")
+        # plt.pause(0.1)
 
     def change_context(self, batch, new_context: Tuple = (1, 0, -1)):
 
