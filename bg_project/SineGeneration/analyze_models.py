@@ -1,9 +1,10 @@
 import pdb
 import pickle
-
+import numpy as np
 import matplotlib.pyplot as plt
 
 from pathlib import Path
+from sklearn.metrics import pairwise_distances
 
 task = "SineGeneration"
 
@@ -24,6 +25,13 @@ allowed_networks = [
 ]
 target_amplitudes = (0.5, 1.5)
 target_frequencies = (0.75, 1.5)
+
+amp_norm = 1 / np.std(target_amplitudes)
+freq_norm = 1 / np.std(target_amplitudes)
+
+target_amplitudes = tuple(value * freq_norm for value in target_frequencies)
+target_frequencies = tuple(value * freq_norm for value in target_frequencies)
+pairwise_distance_store = []
 for file_path in model_store_paths:
     model_path = file_path / "model.pickle"
     if model_path.exists():
@@ -34,4 +42,7 @@ for file_path in model_store_paths:
         parameters, cluster_ids, cluster_centers = trained_task.get_cluster_means(
             amplitudes=target_amplitudes, frequencies=target_frequencies
         )
+
+        pairwise_distance = pairwise_distances(cluster_centers)
+        pairwise_distance_store.append(pairwise_distance / pairwise_distance.max())
         pdb.set_trace()
