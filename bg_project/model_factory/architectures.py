@@ -318,7 +318,7 @@ class RNNGMM(BaseArchitecture):
             output_size=n_classes,
             include_bias=include_bias,
             non_linearity=bg_nfn,
-            std=0.1,
+            std=1/n_classes,
         )
 
         self.bg = GaussianMixtureModel(
