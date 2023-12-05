@@ -319,6 +319,7 @@ class RNNGMM(BaseArchitecture):
             include_bias=include_bias,
             non_linearity=bg_nfn,
             std=1 / n_classes,
+            return_nnl=False,
         )
 
         self.bg = GaussianMixtureModel(
@@ -344,6 +345,7 @@ class RNNGMM(BaseArchitecture):
             logits = self.classifier(classifier_input)
 
             cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+
         bg_act = self.bg(cluster_probs)
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
         return {
