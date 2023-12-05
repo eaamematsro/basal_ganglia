@@ -25,42 +25,44 @@ def split_dataset(dataset, fractions: Sequence = (0.6, 0.2, 0.2)):
 if __name__ == "__main__":
     duration = 300
     torch.set_float32_matmul_precision("medium")
-    simple_model = GenerateSinePL(network="GMM", duration=duration)
-
-    dataset = SineDataset(duration=duration)
     batch_size = 64
+    three_phase_training = False
+    for nbg in [25, 50]:
+        simple_model = GenerateSinePL(network="GMM", duration=duration, nbg=nbg)
+        dataset = SineDataset(duration=duration)
 
-    train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
+        train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
 
-    train_loader = DataLoader(
-        train_set["data"],
-        batch_size=batch_size,
-        sampler=train_set["sampler"],
-        num_workers=10,
-    )
-    val_loader = DataLoader(val_set["data"], batch_size=batch_size, num_workers=10)
+        train_loader = DataLoader(
+            train_set["data"],
+            batch_size=batch_size,
+            sampler=train_set["sampler"],
+            num_workers=10,
+        )
+        val_loader = DataLoader(val_set["data"], batch_size=batch_size, num_workers=10)
 
-    save_path = set_results_path(type(simple_model).__name__)[0]
+        save_path = set_results_path(type(simple_model).__name__)[0]
 
-    trainer = Trainer(
-        max_epochs=500,
-        gradient_clip_val=1,
-        accelerator="gpu",
-        devices=1,
-        default_root_dir=save_path,
-    )
-    trainer.fit(
-        model=simple_model, train_dataloaders=train_loader, val_dataloaders=val_loader
-    )
+        trainer = Trainer(
+            max_epochs=500,
+            gradient_clip_val=1,
+            accelerator="gpu",
+            devices=1,
+            default_root_dir=save_path,
+        )
+        trainer.fit(
+            model=simple_model,
+            train_dataloaders=train_loader,
+            val_dataloaders=val_loader,
+        )
 
-    trainer.test(simple_model, dataloaders=DataLoader(test_set, num_workers=10))
+        trainer.test(simple_model, dataloaders=DataLoader(test_set, num_workers=10))
 
-    # simple_model.save_model()
-    # for batch_idx, batch in enumerate(val_loader):
-    #     simple_model.evaluate_training(batch)
-    pdb.set_trace()
+        # simple_model.save_model()
+        # for batch_idx, batch in enumerate(val_loader):
+        #     simple_model.evaluate_training(batch)
+        # Second Training Phase #
 
-    for nbg in [10]:
         thalamic_model = GenerateSinePL(
             network="GMM", nbg=nbg, n_context=2, duration=duration
         )
@@ -70,16 +72,20 @@ if __name__ == "__main__":
             thalamic_model.network, simple_model.network, freeze=True
         )
         thalamic_model.network.swap_grad_state()
-
-        # for param in thalamic_model.network.parameters():
-        #     print(param.requires_grad, param.shape)
-        # pdb.set_trace()
-        # thalamic_model.network.rnn.reconfigure_u_v()
-
-        train_set, val_set, test_set = split_dataset(
-            SineDataset(amplitudes=(0.5, 1.5), frequencies=(1,), duration=duration),
-            (0.6, 0.2, 0.2),
-        )
+        if three_phase_training:
+            train_set, val_set, test_set = split_dataset(
+                SineDataset(
+                    amplitudes=(1,), frequencies=(1.5, 0.75), duration=duration
+                ),
+                (0.6, 0.2, 0.2),
+            )
+        else:
+            train_set, val_set, test_set = split_dataset(
+                SineDataset(
+                    amplitudes=(0.5, 1.5), frequencies=(1.5, 0.75), duration=duration
+                ),
+                (0.6, 0.2, 0.2),
+            )
 
         train_loader = DataLoader(
             train_set["data"],
@@ -92,7 +98,7 @@ if __name__ == "__main__":
         save_path = set_results_path(type(thalamic_model).__name__)[0]
 
         trainer = Trainer(
-            max_epochs=400,
+            max_epochs=150,
             gradient_clip_val=1,
             accelerator="gpu",
             devices=1,
@@ -105,7 +111,50 @@ if __name__ == "__main__":
         )
 
         trainer.test(thalamic_model, dataloaders=DataLoader(test_set, num_workers=10))
-        thalamic_model.save_model()
-        for batch_idx, batch in enumerate(val_loader):
-            thalamic_model.evaluate_training(batch)
+        # thalamic_model.save_model()
+        # for batch_idx, batch in enumerate(val_loader):
+        #     thalamic_model.evaluate_training(batch)
+
+        if three_phase_training:
+            # Third Training Phase #
+            train_set, val_set, test_set = split_dataset(
+                SineDataset(
+                    amplitudes=(0.5, 1.5), frequencies=(1.5, 0.75), duration=duration
+                ),
+                (0.6, 0.2, 0.2),
+            )
+
+            train_loader = DataLoader(
+                train_set["data"],
+                batch_size=batch_size,
+                sampler=train_set["sampler"],
+                num_workers=10,
+            )
+
+            val_loader = DataLoader(
+                val_set["data"], batch_size=batch_size, num_workers=10
+            )
+
+            save_path = set_results_path(type(thalamic_model).__name__)[0]
+
+            trainer = Trainer(
+                max_epochs=150,
+                gradient_clip_val=1,
+                accelerator="gpu",
+                devices=1,
+                default_root_dir=save_path,
+            )
+            trainer.fit(
+                model=thalamic_model,
+                train_dataloaders=train_loader,
+                val_dataloaders=val_loader,
+            )
+
+            trainer.test(
+                thalamic_model, dataloaders=DataLoader(test_set, num_workers=10)
+            )
+            thalamic_model.save_model()
+            for batch_idx, batch in enumerate(val_loader):
+                thalamic_model.evaluate_training(batch)
+
         pdb.set_trace()

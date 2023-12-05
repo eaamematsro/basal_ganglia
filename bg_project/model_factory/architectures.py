@@ -370,6 +370,16 @@ class RNNGMM(BaseArchitecture):
                 for param in param_group.parameters():
                     param.requires_grad = grad_state
 
+    def get_input_stats(
+        self,
+        classifier_input: torch.Tensor,
+    ) -> (torch.Tensor, torch.Tensor):
+        cluster_logits = self.classifier(classifier_input)
+        cluster_probs = nn.functional.softmax(torch.exp(cluster_logits), dim=1)
+        cluster_ids = torch.argmax(cluster_probs, dim=1)
+        cluster_means = self.bg.means[cluster_ids]
+        return cluster_ids, cluster_means
+
 
 class RNNFeedbackBG(BaseArchitecture):
     def __init__(

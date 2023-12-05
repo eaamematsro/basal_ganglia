@@ -8,6 +8,7 @@ import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from itertools import product
 from sklearn.decomposition import PCA
 from model_factory.architectures import NETWORKS, BaseArchitecture
 from typing import Optional, Any, Tuple, Callable
@@ -22,7 +23,7 @@ class Task(pl.LightningModule, metaclass=abc.ABCMeta):
         self,
         network: str,
         lr: float = 1e-3,
-        wd: float = 1e-6,
+        wd: float = 0,
         task: Optional[str] = None,
         **kwargs,
     ):
@@ -341,6 +342,7 @@ class GenerateSinePL(Task):
             input_sources=rnn_input_source,
             include_bias=False,
             bg_input_size=2,
+            task="SineGeneration",
             **kwargs,
         )
         self.save_hyperparameters()
@@ -365,7 +367,7 @@ class GenerateSinePL(Task):
         self.new_targ_params = None
         self.optimizer = None
         self.configure_optimizers()
-        self.results_path = set_results_path(type(self).__name__)[-1]
+        # self.results_path = set_results_path(type(self).__name__)[-1]
 
         if self.ncontext == 1:
             self.provide_probs = True
@@ -501,6 +503,26 @@ class GenerateSinePL(Task):
         plt.legend()
         plt.pause(0.01)
         pdb.set_trace()
+
+    def get_cluster_means(
+        self,
+        amplitudes: Optional[Tuple] = None,
+        frequencies: Optional[Tuple] = None,
+    ):
+        if amplitudes is None:
+            amplitudes = (0.5, 1)
+        if frequencies is None:
+            frequencies = (0.75, 1.5)
+
+        n_contexts = len(frequencies) * len(amplitudes)
+
+        parameters = np.zeros((n_contexts, 2))
+
+        for idx, (amplitude, frequency) in enumerate(product(amplitudes, frequencies)):
+            parameters[idx] = np.array([amplitude, frequency])
+        parameters = torchify(parameters)
+        cluster_ids, cluster_means = self.network.get_input_stats(parameters)
+        return cluster_ids.cpu().numpy(), cluster_means.cpu().numpy()
 
 
 class MultiGainPacMan(Task):
