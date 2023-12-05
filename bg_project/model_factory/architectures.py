@@ -288,7 +288,7 @@ class RNNGMM(BaseArchitecture):
         input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
         dt: float = 0.05,
         tau: float = 0.15,
-        bg_layer_sizes: Optional[Tuple[int, ...]] = (25, 15, 10),
+        bg_layer_sizes: Optional[Tuple[int, ...]] = (25, 15),
         bg_nfn: Optional[nn.Module] = None,
         bg_input_size: Optional[int] = 1,
         include_bias: bool = False,
