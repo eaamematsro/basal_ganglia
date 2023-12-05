@@ -522,7 +522,11 @@ class GenerateSinePL(Task):
             parameters[idx] = np.array([amplitude, frequency])
         parameters = torchify(parameters)
         cluster_ids, cluster_means = self.network.get_input_stats(parameters)
-        return cluster_ids.cpu().numpy(), cluster_means.cpu().numpy()
+        return (
+            parameters.cpu().numpy(),
+            cluster_ids.cpu().numpy(),
+            cluster_means.cpu().numpy(),
+        )
 
 
 class MultiGainPacMan(Task):

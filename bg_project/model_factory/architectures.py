@@ -374,10 +374,11 @@ class RNNGMM(BaseArchitecture):
         self,
         classifier_input: torch.Tensor,
     ) -> (torch.Tensor, torch.Tensor):
-        cluster_logits = self.classifier(classifier_input)
-        cluster_probs = nn.functional.softmax(torch.exp(cluster_logits), dim=1)
-        cluster_ids = torch.argmax(cluster_probs, dim=1)
-        cluster_means = self.bg.means[cluster_ids]
+        with torch.no_grad():
+            cluster_logits = self.classifier(classifier_input)
+            cluster_probs = nn.functional.softmax(torch.exp(cluster_logits), dim=1)
+            cluster_ids = torch.argmax(cluster_probs, dim=1)
+            cluster_means = self.bg.means[cluster_ids]
         return cluster_ids, cluster_means
 
 
