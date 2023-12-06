@@ -3,6 +3,7 @@ import pdb
 import torch
 import numpy as np
 import torch.nn as nn
+import torch.distributions as Dist
 from enum import Enum
 from torch.distributions.multivariate_normal import MultivariateNormal
 from .noise_models import GaussianNoise, GaussianSignalDependentNoise
@@ -573,15 +574,12 @@ class GaussianMixtureModel(Module):
         super().__init__()
 
         self.nclusters = number_of_clusters
-        self.means = nn.Parameter(
-            torchify(np.random.randn(number_of_clusters, latent_dimension))
-        )
-        self.cov = nn.Parameter(
-            torchify(
-                np.random.randn(number_of_clusters, latent_dimension)
-                / np.sqrt(latent_dimension)
-            )
-        )
+        self.latent_dim = latent_dimension
+
+        self.means = MLP(input_size=number_of_clusters, output_size=latent_dimension)
+
+        self.cov = MLP(input_size=number_of_clusters, output_size=latent_dimension)
+
 
     def forward(self, cluster_probs: torch.Tensor):
         """
@@ -593,14 +591,11 @@ class GaussianMixtureModel(Module):
             z: Sampled latents. [batch, latent]
 
         """
-        means = (cluster_probs[:, :, None] * self.means).sum(dim=1)
-        covs = (cluster_probs[:, :, None] * torch.sqrt(torch.exp(self.cov))).sum(dim=1)
-        z = means + (
-            0
-            * covs
-            * torch.randn(
-                cluster_probs.shape[0], self.means.shape[1], device=cluster_probs.device
-            )
+
+        mean = self.means(cluster_probs)
+        covs = self.cov(cluster_probs)
+        z = mean + 0.1 * torch.sqrt(torch.exp(covs)) * torch.randn(
+            cluster_probs.shape[0], self.latent_dim, device=cluster_probs.device
         )
         return z
 
