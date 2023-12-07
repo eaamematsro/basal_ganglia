@@ -9,6 +9,18 @@ from sklearn.decomposition import PCA
 from datasets.loaders import SineDataset
 from pacman.multigain_pacman import split_dataset
 from torch.utils.data import DataLoader, RandomSampler, random_split
+from itertools import product
+from matplotlib.colors import Normalize
+
+
+def linear_map(data: np.ndarray, n_dimensions: int = 2):
+    color_scales = np.zeros((data.shape[0], 3))
+
+    for dim in range(n_dimensions):
+        dim_max = data[:, dim].max()
+        color_scales[:, dim] = data[:, dim] / dim_max
+
+    return color_scales
 
 
 task = "SineGeneration"
@@ -36,7 +48,12 @@ target_frequencies = (1.5, 0.75)
 #
 # target_amplitudes = tuple(value * freq_norm for value in target_frequencies)
 # target_frequencies = tuple(value * freq_norm for value in target_frequencies)
+
+
 pairwise_distance_store = []
+parameter_store = []
+cluster_center = []
+data_store = []
 duration = 300
 dataset = SineDataset(
     duration=duration,
@@ -64,9 +81,59 @@ for file_path in model_store_paths:
         fig.tight_layout()
         plt.pause(0.1)
         parameters, cluster_ids, cluster_centers = trained_task.get_cluster_means()
-
         pairwise_distance = pairwise_distances(cluster_centers)
         pairwise_distance_store.append(pairwise_distance / pairwise_distance.max())
+        parameter_store.append(parameters)
+        augmented_data_matrix = np.zeros((np.product(pairwise_distance.shape), 5))
 
-        dist_pca = PCA()
+        for idx, (row, col) in enumerate(
+            product(
+                range(pairwise_distance.shape[0]), range(pairwise_distance.shape[1])
+            )
+        ):
+            augmented_data_matrix[idx, 0] = (
+                pairwise_distance[row, col] / pairwise_distance.max()
+            )
+            augmented_data_matrix[idx, 1:3] = parameters[row]
+            augmented_data_matrix[idx, 3:] = parameters[col]
+
+        test = np.hstack(
+            [
+                (pairwise_distance / pairwise_distance.max()).flatten(),
+                parameters.flatten(),
+            ]
+        )
+        data_store.append(augmented_data_matrix)
+        center_pca = PCA()
+        transformed = center_pca.fit_transform(cluster_centers)
+        plt.figure()
+        plt.scatter(
+            transformed[:, 0],
+            transformed[:, 1],
+            c=linear_map(parameters, n_dimensions=1),
+        )
+        plt.xlabel("PC1")
+        plt.ylabel("PC2")
+        plt.pause(0.1)
         pdb.set_trace()
+
+
+grouped_data = np.vstack(data_store)
+fig, ax = plt.subplots()
+processed_data = np.zeros((grouped_data.shape[0], 3))
+processed_data[:, 0] = grouped_data[:, 0]
+processed_data[:, 1] = (grouped_data[:, 1] - grouped_data[:, 3]) ** 2
+processed_data[:, 2] = (grouped_data[:, 2] - grouped_data[:, 4]) ** 2
+norm = Normalize(vmin=0, vmax=1)
+g = ax.scatter(
+    processed_data[:, 1],
+    processed_data[:, 2],
+    c=processed_data[:, 0],
+    norm=norm,
+    cmap="copper",
+)
+ax.set_xlabel("Amplitude Distance")
+ax.set_ylabel("Frequency Distance")
+plt.colorbar(g, ax=ax, label="Normed Euclidean Distance")
+plt.pause(0.1)
+pdb.set_trace()

@@ -1,6 +1,7 @@
 import pdb
 import torch
 import matplotlib.pyplot as plt
+import numpy as np
 from typing import Sequence
 from model_factory.networks import transfer_network_weights
 from datasets.tasks import GenerateSine, GenerateSinePL, set_results_path
@@ -27,9 +28,17 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     batch_size = 64
     three_phase_training = False
-    for nbg in [25, 50]:
-        simple_model = GenerateSinePL(network="GMM", duration=duration, nbg=nbg)
-        dataset = SineDataset(duration=duration)
+
+    for nbg in [10]:
+        dataset = SineDataset(
+            duration=duration,
+        )
+
+        simple_model = GenerateSinePL(
+            network="GMM",
+            duration=duration,
+            nbg=nbg,
+        )
 
         train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
 
@@ -47,8 +56,9 @@ if __name__ == "__main__":
             max_epochs=500,
             gradient_clip_val=1,
             accelerator="gpu",
-            devices=1,
+            devices=2,
             default_root_dir=save_path,
+            strategy='ddp_find_unused_parameters_true'
         )
         trainer.fit(
             model=simple_model,
@@ -63,29 +73,39 @@ if __name__ == "__main__":
         #     simple_model.evaluate_training(batch)
         # Second Training Phase #
 
-        thalamic_model = GenerateSinePL(
-            network="GMM", nbg=nbg, n_context=2, duration=duration
-        )
+        if three_phase_training:
+            amplitudes = (1,)
+            frequencies = tuple(np.linspace(0.5, 2, 5).tolist())
+            dataset = SineDataset(
+                amplitudes=(1,), frequencies=(0.5, 1, 2), duration=duration
+            )
+        else:
+            amplitudes = tuple(np.linspace(0.5, 2, 5).tolist())
+            frequencies = tuple(np.linspace(0.5, 2, 5).tolist())
+            dataset = SineDataset(
+                amplitudes=amplitudes, frequencies=amplitudes, duration=duration
+            )
 
+        thalamic_model = GenerateSinePL(
+            network="GMM",
+            nbg=nbg,
+            n_context=2,
+            duration=duration,
+            n_classes=len(amplitudes) * len(frequencies),
+        )
+        thalamic_model.param_normalizers = dataset
         # Transfer and freeze weights from trained network's rnn module
         transfer_network_weights(
             thalamic_model.network, simple_model.network, freeze=True
         )
         thalamic_model.network.swap_grad_state()
-        if three_phase_training:
-            train_set, val_set, test_set = split_dataset(
-                SineDataset(
-                    amplitudes=(1,), frequencies=(1.5, 0.75), duration=duration
-                ),
-                (0.6, 0.2, 0.2),
-            )
-        else:
-            train_set, val_set, test_set = split_dataset(
-                SineDataset(
-                    amplitudes=(0.5, 1.5), frequencies=(1.5, 0.75), duration=duration
-                ),
-                (0.6, 0.2, 0.2),
-            )
+
+        train_set, val_set, test_set = split_dataset(
+            dataset,
+            (0.6, 0.2, 0.2),
+        )
+
+        thalamic_model.param_normalizers = dataset.normalizers
 
         train_loader = DataLoader(
             train_set["data"],
@@ -101,8 +121,9 @@ if __name__ == "__main__":
             max_epochs=150,
             gradient_clip_val=1,
             accelerator="gpu",
-            devices=1,
+            devices=2,
             default_root_dir=save_path,
+            strategy='ddp_find_unused_parameters_true'
         )
         trainer.fit(
             model=thalamic_model,
@@ -111,15 +132,16 @@ if __name__ == "__main__":
         )
 
         trainer.test(thalamic_model, dataloaders=DataLoader(test_set, num_workers=10))
-        # thalamic_model.save_model()
-        # for batch_idx, batch in enumerate(val_loader):
-        #     thalamic_model.evaluate_training(batch)
+        if not three_phase_training:
+            thalamic_model.save_model()
+            # for batch_idx, batch in enumerate(val_loader):
+            #     thalamic_model.evaluate_training(batch)
 
         if three_phase_training:
             # Third Training Phase #
             train_set, val_set, test_set = split_dataset(
                 SineDataset(
-                    amplitudes=(0.5, 1.5), frequencies=(1.5, 0.75), duration=duration
+                    amplitudes=(0.5, 1, 1.5), frequencies=(0.5, 1, 2), duration=duration
                 ),
                 (0.6, 0.2, 0.2),
             )
@@ -157,4 +179,4 @@ if __name__ == "__main__":
             for batch_idx, batch in enumerate(val_loader):
                 thalamic_model.evaluate_training(batch)
 
-        pdb.set_trace()
+        # pdb.set_trace()
