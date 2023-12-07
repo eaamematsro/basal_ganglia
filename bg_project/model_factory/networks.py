@@ -576,10 +576,17 @@ class GaussianMixtureModel(Module):
         self.nclusters = number_of_clusters
         self.latent_dim = latent_dimension
 
-        self.means = MLP(input_size=number_of_clusters, output_size=latent_dimension)
+        self.means = MLP(
+            input_size=number_of_clusters,
+            output_size=latent_dimension,
+            layer_sizes=(latent_dimension * 2,),
+        )
 
-        self.cov = MLP(input_size=number_of_clusters, output_size=latent_dimension)
-
+        self.cov = MLP(
+            input_size=number_of_clusters,
+            output_size=latent_dimension,
+            layer_sizes=(latent_dimension * 2,),
+        )
 
     def forward(self, cluster_probs: torch.Tensor):
         """

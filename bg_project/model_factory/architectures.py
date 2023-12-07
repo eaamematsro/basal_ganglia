@@ -344,7 +344,10 @@ class RNNGMM(BaseArchitecture):
             classifier_input = next(iter(bg_inputs.values()), None)
             logits = self.classifier(classifier_input)
 
-            cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+            # cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+            cluster_probs = nn.functional.softmax(
+                logits,
+            )
 
         bg_act = self.bg(cluster_probs)
         r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
@@ -376,12 +379,14 @@ class RNNGMM(BaseArchitecture):
     def get_input_stats(
         self,
         classifier_input: torch.Tensor,
+        cluster_probs: Optional[torch.Tensor] = None,
     ) -> (torch.Tensor, torch.Tensor):
         with torch.no_grad():
-            cluster_logits = self.classifier(classifier_input)
-            cluster_probs = nn.functional.softmax(torch.exp(cluster_logits), dim=1)
+            if cluster_probs is None:
+                cluster_logits = self.classifier(classifier_input)
+                cluster_probs = nn.functional.softmax(cluster_logits, dim=1)
             cluster_ids = torch.argmax(cluster_probs, dim=1)
-            cluster_means = self.bg.means[cluster_ids]
+            cluster_means = self.bg.means(cluster_probs)
         return cluster_ids, cluster_means
 
 

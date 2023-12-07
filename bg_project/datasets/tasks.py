@@ -327,6 +327,7 @@ class GenerateSinePL(Task):
         duration: int = 300,
         nbg: int = 10,
         n_context: int = 1,
+        provide_probs: bool = True,
         **kwargs,
     ):
 
@@ -367,14 +368,21 @@ class GenerateSinePL(Task):
         self.new_targ_params = None
         self.optimizer = None
         self.configure_optimizers()
+        self.param_normalizers = None
+        self.cluster_labels = {}
         # self.results_path = set_results_path(type(self).__name__)[-1]
 
         if self.ncontext == 1:
             self.provide_probs = True
         else:
-            self.provide_probs = False
+            self.provide_probs = provide_probs
 
-    def forward(self, inputs: dict, **kwargs):
+        if self.provide_probs & hasattr(self.network, "bg"):
+            self.network.swap_grad_state(
+                params_to_swap=[self.network.classifier], grad_state=False
+            )
+
+    def forward(self, inputs: dict, return_clusters: bool = False, **kwargs):
 
         cues = inputs["cues"]
         parameters = inputs["parameters"]
@@ -383,15 +391,45 @@ class GenerateSinePL(Task):
         position_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
         )
-        if hasattr(self, "bg"):
-            if self.provide_probs:
-                cluster_probs = torch.zeros(
-                    (batch_size, self.network.bg.nclusters),
-                    device=self.network.Wout.device,
-                )
-                cluster_probs[:, 0] = 1
-                bg_inputs = {"cluster_probs": cluster_probs}
+        cluster_ids = torch.zeros(
+            self.duration, batch_size, device=self.network.Wout.device
+        )
 
+        if hasattr(self.network, "bg"):
+            if self.provide_probs:
+                if self.ncontext == 1:
+                    cluster_probs = torch.zeros(
+                        (batch_size, self.network.bg.nclusters),
+                        device=self.network.Wout.device,
+                    )
+                    cluster_probs[:, 0] = 1
+                    bg_inputs = {"cluster_probs": cluster_probs}
+                else:
+
+                    parameters_amp = np.unique(parameters.cpu()[:, 0, 0])
+                    parameters_freq = np.unique(parameters.cpu()[:, 1, 0])
+                    tuples = [
+                        (round(amp, 4), round(freq, 4))
+                        for amp, freq in product(parameters_amp, parameters_freq)
+                    ]
+                    cluster_keys = list(self.cluster_labels.keys())
+                    [
+                        self.cluster_labels.update({tup: len(self.cluster_labels)})
+                        for tup in tuples
+                        if tup not in cluster_keys
+                    ]
+                    cluster_probs = torch.zeros(
+                        (batch_size, self.network.bg.nclusters),
+                        device=self.network.Wout.device,
+                    )
+
+                    for batch in range(batch_size):
+                        batch_tup = (
+                            round(parameters.cpu().numpy()[batch, 0, 0], 4),
+                            round(parameters.cpu().numpy()[batch, 1, 0], 4),
+                        )
+                        cluster_probs[batch, self.cluster_labels[batch_tup]] = 1
+                    bg_inputs = {"cluster_probs": cluster_probs}
             else:
                 bg_inputs = {}
         else:
@@ -405,8 +443,12 @@ class GenerateSinePL(Task):
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
             position_store[ti] = outputs["r_act"] @ self.network.Wout
+            cluster_ids[ti] = torch.argmax(outputs["cluster_probs"], dim=1)
 
-        return position_store
+        if return_clusters:
+            return position_store, cluster_ids
+        else:
+            return position_store
 
     # def configure_optimizers(self):
     #     """"""
@@ -490,43 +532,94 @@ class GenerateSinePL(Task):
         (timing_cues, contexts), y = batch
         inputs = {"cues": timing_cues, "parameters": contexts}
         with torch.no_grad():
-            positions = self.forward(inputs)
+            positions, cluster_labels = self.forward(inputs, return_clusters=True)
 
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
         timing_cues = timing_cues.detach().cpu().numpy()
+
         plt.figure()
-        plt.plot(timing_cues[0, 0], label="Go Cue", ls="--", color="green")
-        plt.plot(timing_cues[0, 1], label="Stop Cue", ls="--", color="red")
-        plt.plot(targets[0], label="Target")
-        plt.plot(outputs[0], label="Trained Model Output")
+        fig, ax = plt.subplots(2, sharex="col")
+        ax[0].plot(timing_cues[0, 0], label="Go Cue", ls="--", color="green")
+        ax[0].plot(timing_cues[0, 1], label="Stop Cue", ls="--", color="red")
+        ax[0].plot(targets[0], label="Target")
+        ax[0].plot(outputs[0], label="Trained Model Output")
+        ax[1].plot(cluster_labels[:, 0])
+        ax[1].set_ylim([0, cluster_labels.max()])
         plt.legend()
         plt.pause(0.01)
         pdb.set_trace()
 
     def get_cluster_means(
         self,
-        amplitudes: Optional[Tuple] = None,
-        frequencies: Optional[Tuple] = None,
     ):
-        if amplitudes is None:
-            amplitudes = (0.5, 1)
-        if frequencies is None:
-            frequencies = (0.75, 1.5)
 
-        n_contexts = len(frequencies) * len(amplitudes)
-
+        context_keys = list(self.cluster_labels.keys())
+        tuples = [
+            (amp / self.param_normalizers[0], freq / self.param_normalizers[1])
+            for (amp, freq) in context_keys
+        ]
+        n_contexts = len(tuples)
         parameters = np.zeros((n_contexts, 2))
+        for idx, (amplitude, frequency) in enumerate(tuples):
+            parameters[idx] = np.array(
+                [
+                    amplitude * self.param_normalizers[0],
+                    frequency * self.param_normalizers[1],
+                ]
+            )
+        parameters = torchify(parameters).to(self.device)
+        # tuples = [
+        #     (round(amp, 4), round(freq, 4))
+        #     for amp, freq in product(parameters_amp, parameters_freq)
+        # ]
 
-        for idx, (amplitude, frequency) in enumerate(product(amplitudes, frequencies)):
-            parameters[idx] = np.array([amplitude, frequency])
-        parameters = torchify(parameters)
-        cluster_ids, cluster_means = self.network.get_input_stats(parameters)
+        cluster_probs = torch.zeros(
+            (n_contexts, self.network.bg.nclusters),
+            device=self.network.Wout.device,
+        )
+
+        for batch in range(n_contexts):
+            batch_tup = (
+                round(parameters.cpu().numpy()[batch, 0], 4),
+                round(parameters.cpu().numpy()[batch, 1], 4),
+            )
+            try:
+                cluster_probs[batch, self.cluster_labels[batch_tup]] = 1
+            except KeyError:
+                print(f"{batch_tup} not in keys")
+
+        cluster_ids, cluster_means = self.network.get_input_stats(
+            parameters, cluster_probs=cluster_probs
+        )
+        unnormalized_params = parameters.clone()
+        for i, norm in enumerate(self.param_normalizers):
+            unnormalized_params[:, i] /= norm
         return (
-            parameters.cpu().numpy(),
+            unnormalized_params.cpu().numpy(),
             cluster_ids.cpu().numpy(),
             cluster_means.cpu().numpy(),
         )
+
+    def evaluate_network_clusters(self, go_cues: torch.Tensor):
+        n_clusters = self.network.bg.nclusters
+        duration = go_cues.shape[-1]
+        go_cues = go_cues
+        cluster_probs = torch.eye(n_clusters)
+        position_store = torch.zeros(
+            duration,
+            n_clusters,
+            1,
+        )
+        bg_inputs = {"cluster_probs": cluster_probs}
+        with torch.no_grad():
+            for time in range(duration):
+                rnn_input = {"cues": go_cues[0, :, time]}
+                outputs = self.network(
+                    bg_inputs=bg_inputs, rnn_inputs=rnn_input, noise_scale=0
+                )
+                position_store[time] = outputs["r_act"] @ self.network.Wout
+        return position_store.squeeze().cpu().numpy()
 
 
 class MultiGainPacMan(Task):
