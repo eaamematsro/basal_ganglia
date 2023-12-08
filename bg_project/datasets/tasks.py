@@ -348,7 +348,7 @@ class GenerateSinePL(Task):
         )
         self.save_hyperparameters()
         self.network.params.update({"task": "SineGeneration"})
-        self.network.params.update({"ncontexst": n_context})
+        self.network.params.update({"ncontexts": n_context})
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
@@ -370,7 +370,7 @@ class GenerateSinePL(Task):
         self.configure_optimizers()
         self.param_normalizers = None
         self.cluster_labels = {}
-        # self.results_path = set_results_path(type(self).__name__)[-1]
+        self.results_path = set_results_path(type(self).__name__)[-1]
 
         if self.ncontext == 1:
             self.provide_probs = True
@@ -604,14 +604,20 @@ class GenerateSinePL(Task):
     def evaluate_network_clusters(self, go_cues: torch.Tensor):
         n_clusters = self.network.bg.nclusters
         duration = go_cues.shape[-1]
-        go_cues = go_cues
+        go_cues = go_cues[:n_clusters]
         cluster_probs = torch.eye(n_clusters)
         position_store = torch.zeros(
             duration,
             n_clusters,
             1,
         )
+        activity_store = torch.zeros(
+            duration,
+            n_clusters,
+            self.network.rnn.J.shape[0],
+        )
         bg_inputs = {"cluster_probs": cluster_probs}
+        self.network.rnn.reset_state(n_clusters)
         with torch.no_grad():
             for time in range(duration):
                 rnn_input = {"cues": go_cues[0, :, time]}
@@ -619,7 +625,12 @@ class GenerateSinePL(Task):
                     bg_inputs=bg_inputs, rnn_inputs=rnn_input, noise_scale=0
                 )
                 position_store[time] = outputs["r_act"] @ self.network.Wout
-        return position_store.squeeze().cpu().numpy()
+                activity_store[time] = outputs["r_act"]
+
+        return (
+            position_store.squeeze().cpu().numpy(),
+            activity_store.squeeze().cpu().numpy(),
+        )
 
 
 class MultiGainPacMan(Task):
