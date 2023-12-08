@@ -386,7 +386,6 @@ class GenerateSinePL(Task):
 
         cues = inputs["cues"]
         parameters = inputs["parameters"]
-
         batch_size = cues.shape[0]
         position_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
@@ -440,6 +439,7 @@ class GenerateSinePL(Task):
             bg_inputs.update({"context": parameters[:, :, ti]})
             rnn_input = {
                 "cues": cues[:, :, ti],
+                "target_parameters": parameters[:, :, ti],
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
             position_store[ti] = outputs["r_act"] @ self.network.Wout

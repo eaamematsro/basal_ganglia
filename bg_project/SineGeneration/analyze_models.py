@@ -264,7 +264,7 @@ for file_path in model_store_paths:
         file_name = date_results_path / "PCA_encoding_plot"
         plt.savefig(file_name)
         plt.pause(0.1)
-        plt.close('all')
+        plt.close("all")
 
 plt.figure()
 plt.hist(freq_score, density=True)
