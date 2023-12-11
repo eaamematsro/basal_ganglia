@@ -12,7 +12,7 @@ from model_factory.architectures import RNNGMM
 from typing import Sequence
 from pathlib import Path
 from itertools import product
-from .analyze_models import set_plt_params, make_axis_nice
+from SineGeneration.analyze_models import set_plt_params, make_axis_nice
 
 
 def split_dataset(dataset, fractions: Sequence = (0.2, 0.6, 0.2)):
@@ -39,7 +39,7 @@ tau = 0.15
 lr, wd = 1e-3, 1e-6
 plot_freq = 25
 
-train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
+train_set, val_set, test_set = split_dataset(dataset, (0.01, 0.79, 0.2))
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 train_loader = DataLoader(
     train_set["data"],

@@ -161,178 +161,180 @@ def abline(
         axes.plot(x_vals, y_vals, ls=ls, label=label, color=color, **kwargs)
 
 
-task = "SineGeneration"
+if __name__ == '__main__':
 
-cwd = Path().cwd()
-data_path = cwd / f"data/models/{task}"
+    task = "SineGeneration"
 
-
-date_folders = [x for x in data_path.iterdir() if x.is_dir()]
-
-folders = [[x for x in folder.iterdir() if x.is_dir()] for folder in date_folders]
-
-set_plt_params()
-model_store_paths = []
-for data in folders:
-    model_store_paths.extend(data)
-training_outputs = []
-allowed_networks = [
-    "RNNGMM",
-]
-target_amplitudes = (0.5, 1.5)
-target_frequencies = (1.5, 0.75)
-
-# amp_norm = 1 / np.std(target_amplitudes)
-# freq_norm = 1 / np.std(target_amplitudes)
-#
-# target_amplitudes = tuple(value * freq_norm for value in target_frequencies)
-# target_frequencies = tuple(value * freq_norm for value in target_frequencies)
+    cwd = Path().cwd()
+    data_path = cwd / f"data/models/{task}"
 
 
-pairwise_distance_store = []
-parameter_store = []
-cluster_center = []
-frequency_score = []
-pc1_freq = []
-data_store = []
-duration = 300
-neurons_to_plot = 5
-dataset = SineDataset(
-    duration=duration,
-)
-train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
-val_loader = DataLoader(val_set["data"], batch_size=50, num_workers=10)
-(go_cues, contexts), targets = next(iter(val_loader))
-results_path = Path(__file__).parent.parent.parent / "results/GenerateSinePL"
-for file_path in model_store_paths:
-    model_path = file_path / "model.pickle"
-    date_str = file_path.parent.resolve().stem
-    date_results_path = results_path / date_str
-    if model_path.exists():
-        with open(model_path, "rb") as h:
-            pickled_data = pickle.load(h)
-        trained_task = pickled_data["task"]
-        trained_task.network.rnn.reset_state(batch_size=10)
+    date_folders = [x for x in data_path.iterdir() if x.is_dir()]
 
-        if hasattr(trained_task, "results_path"):
-            date_results_path = trained_task.results_path
+    folders = [[x for x in folder.iterdir() if x.is_dir()] for folder in date_folders]
 
-        outputs, activity = trained_task.evaluate_network_clusters(go_cues)
-        var_activity = np.var(activity, axis=0).mean(axis=0)
-        prob_neuron = var_activity / var_activity.sum()
-        fig, ax = plt.subplots(10, ncols=2, figsize=(12, 20), sharex="col")
-        neurons = np.random.choice(
-            activity.shape[2], neurons_to_plot, p=prob_neuron, replace=False
-        )
-        for idx, axes in enumerate(ax):
-            if idx == 0:
-                axes[0].set_title("Behavior")
-                axes[1].set_title("Neural Activity")
-            axes[0].plot(go_cues[0, 0], label="Go", c="green", ls="--")
-            axes[0].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
-            axes[0].plot(
-                outputs[:, idx],
+    set_plt_params()
+    model_store_paths = []
+    for data in folders:
+        model_store_paths.extend(data)
+    training_outputs = []
+    allowed_networks = [
+        "RNNGMM",
+    ]
+    target_amplitudes = (0.5, 1.5)
+    target_frequencies = (1.5, 0.75)
+
+    # amp_norm = 1 / np.std(target_amplitudes)
+    # freq_norm = 1 / np.std(target_amplitudes)
+    #
+    # target_amplitudes = tuple(value * freq_norm for value in target_frequencies)
+    # target_frequencies = tuple(value * freq_norm for value in target_frequencies)
+
+
+    pairwise_distance_store = []
+    parameter_store = []
+    cluster_center = []
+    frequency_score = []
+    pc1_freq = []
+    data_store = []
+    duration = 300
+    neurons_to_plot = 5
+    dataset = SineDataset(
+        duration=duration,
+    )
+    train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
+    val_loader = DataLoader(val_set["data"], batch_size=50, num_workers=10)
+    (go_cues, contexts), targets = next(iter(val_loader))
+    results_path = Path(__file__).parent.parent.parent / "results/GenerateSinePL"
+    for file_path in model_store_paths:
+        model_path = file_path / "model.pickle"
+        date_str = file_path.parent.resolve().stem
+        date_results_path = results_path / date_str
+        if model_path.exists():
+            with open(model_path, "rb") as h:
+                pickled_data = pickle.load(h)
+            trained_task = pickled_data["task"]
+            trained_task.network.rnn.reset_state(batch_size=10)
+
+            if hasattr(trained_task, "results_path"):
+                date_results_path = trained_task.results_path
+
+            outputs, activity = trained_task.evaluate_network_clusters(go_cues)
+            var_activity = np.var(activity, axis=0).mean(axis=0)
+            prob_neuron = var_activity / var_activity.sum()
+            fig, ax = plt.subplots(10, ncols=2, figsize=(12, 20), sharex="col")
+            neurons = np.random.choice(
+                activity.shape[2], neurons_to_plot, p=prob_neuron, replace=False
             )
-            axes[0].set_ylim([-1.75, 1.75])
-            axes[1].plot(go_cues[0, 0], label="Go", c="green", ls="--")
-            axes[1].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
-            axes[1].plot(activity[:, idx, neurons])
-        ax[-1, 0].set_xlabel("Time")
-        ax[-1, 1].set_xlabel("Time")
+            for idx, axes in enumerate(ax):
+                if idx == 0:
+                    axes[0].set_title("Behavior")
+                    axes[1].set_title("Neural Activity")
+                axes[0].plot(go_cues[0, 0], label="Go", c="green", ls="--")
+                axes[0].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
+                axes[0].plot(
+                    outputs[:, idx],
+                )
+                axes[0].set_ylim([-1.75, 1.75])
+                axes[1].plot(go_cues[0, 0], label="Go", c="green", ls="--")
+                axes[1].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
+                axes[1].plot(activity[:, idx, neurons])
+            ax[-1, 0].set_xlabel("Time")
+            ax[-1, 1].set_xlabel("Time")
 
-        fig.tight_layout()
-        file_name = date_results_path / "behavior_plot"
-        fig.savefig(file_name)
-        plt.pause(0.1)
-        parameters, cluster_ids, cluster_centers = trained_task.get_cluster_means()
-        pairwise_distance = pairwise_distances(cluster_centers)
-        pairwise_distance_store.append(pairwise_distance / pairwise_distance.max())
-        parameter_store.append(parameters)
-        augmented_data_matrix = np.zeros((np.product(pairwise_distance.shape), 5))
+            fig.tight_layout()
+            file_name = date_results_path / "behavior_plot"
+            fig.savefig(file_name)
+            plt.pause(0.1)
+            parameters, cluster_ids, cluster_centers = trained_task.get_cluster_means()
+            pairwise_distance = pairwise_distances(cluster_centers)
+            pairwise_distance_store.append(pairwise_distance / pairwise_distance.max())
+            parameter_store.append(parameters)
+            augmented_data_matrix = np.zeros((np.product(pairwise_distance.shape), 5))
 
-        for idx, (row, col) in enumerate(
-            product(
-                range(pairwise_distance.shape[0]), range(pairwise_distance.shape[1])
+            for idx, (row, col) in enumerate(
+                product(
+                    range(pairwise_distance.shape[0]), range(pairwise_distance.shape[1])
+                )
+            ):
+                augmented_data_matrix[idx, 0] = (
+                    pairwise_distance[row, col] / pairwise_distance.max()
+                )
+                augmented_data_matrix[idx, 1:3] = parameters[row]
+                augmented_data_matrix[idx, 3:] = parameters[col]
+
+            test = np.hstack(
+                [
+                    (pairwise_distance / pairwise_distance.max()).flatten(),
+                    parameters.flatten(),
+                ]
             )
-        ):
-            augmented_data_matrix[idx, 0] = (
-                pairwise_distance[row, col] / pairwise_distance.max()
+            data_store.append(augmented_data_matrix)
+            center_pca = PCA()
+            transformed = center_pca.fit_transform(cluster_centers)
+            gains = np.linspace(-1, 1)
+            # amp_model = Ridge()
+            # amp_model.fit(transformed[:, :2] ** 2, parameters[:, 0] ** 2)
+            # amp_coeff = amp_model.coef_ / np.linalg.norm(amp_model.coef_)
+            # amp_score = amp_model.score(transformed[:, :2], parameters[:, 0])
+
+            freq_model = Ridge()
+            freq_model.fit(transformed[:, :2], parameters[:, 1])
+            freq_score = freq_model.score(transformed[:, :2], parameters[:, 1])
+            freq_coeff = freq_model.coef_ / np.linalg.norm(freq_model.coef_)
+            frequency_score.append(freq_score)
+            pc1_freq.append(freq_coeff[0] ** 2 / (freq_coeff**2).sum())
+            freq_vec = gains[:, None] * freq_coeff
+            plt.figure()
+            plt.title(f"{freq_score: 0.3f}")
+
+            plt.scatter(
+                transformed[:, 0],
+                transformed[:, 1],
+                c=linear_map(parameters, n_dimensions=1),
             )
-            augmented_data_matrix[idx, 1:3] = parameters[row]
-            augmented_data_matrix[idx, 3:] = parameters[col]
+            abline(freq_coeff[1] / freq_coeff[0], label="Freq Encoding", intercept=0)
 
-        test = np.hstack(
-            [
-                (pairwise_distance / pairwise_distance.max()).flatten(),
-                parameters.flatten(),
-            ]
-        )
-        data_store.append(augmented_data_matrix)
-        center_pca = PCA()
-        transformed = center_pca.fit_transform(cluster_centers)
-        gains = np.linspace(-1, 1)
-        # amp_model = Ridge()
-        # amp_model.fit(transformed[:, :2] ** 2, parameters[:, 0] ** 2)
-        # amp_coeff = amp_model.coef_ / np.linalg.norm(amp_model.coef_)
-        # amp_score = amp_model.score(transformed[:, :2], parameters[:, 0])
+            plt.xlabel("PC1")
+            plt.ylabel("PC2")
+            plt.legend()
+            file_name = date_results_path / "PCA_encoding_plot"
+            plt.savefig(file_name)
+            plt.pause(0.1)
+            plt.close("all")
 
-        freq_model = Ridge()
-        freq_model.fit(transformed[:, :2], parameters[:, 1])
-        freq_score = freq_model.score(transformed[:, :2], parameters[:, 1])
-        freq_coeff = freq_model.coef_ / np.linalg.norm(freq_model.coef_)
-        frequency_score.append(freq_score)
-        pc1_freq.append(freq_coeff[0] ** 2 / (freq_coeff**2).sum())
-        freq_vec = gains[:, None] * freq_coeff
-        plt.figure()
-        plt.title(f"{freq_score: 0.3f}")
+    plt.figure()
+    plt.hist(freq_score, density=True)
+    plt.xlabel("Goodness of Fit")
+    file_name = results_path / "goodness_of_fit_dist"
+    plt.savefig(file_name)
+    plt.pause(0.1)
 
-        plt.scatter(
-            transformed[:, 0],
-            transformed[:, 1],
-            c=linear_map(parameters, n_dimensions=1),
-        )
-        abline(freq_coeff[1] / freq_coeff[0], label="Freq Encoding", intercept=0)
+    plt.figure()
+    plt.hist(pc1_freq, density=True)
+    plt.xlabel("PC1 Fractional Contribution")
+    file_name = results_path / "Fractional_contribution"
+    plt.savefig(file_name)
+    plt.pause(0.1)
 
-        plt.xlabel("PC1")
-        plt.ylabel("PC2")
-        plt.legend()
-        file_name = date_results_path / "PCA_encoding_plot"
-        plt.savefig(file_name)
-        plt.pause(0.1)
-        plt.close("all")
-
-plt.figure()
-plt.hist(freq_score, density=True)
-plt.xlabel("Goodness of Fit")
-file_name = results_path / "goodness_of_fit_dist"
-plt.savefig(file_name)
-plt.pause(0.1)
-
-plt.figure()
-plt.hist(pc1_freq, density=True)
-plt.xlabel("PC1 Fractional Contribution")
-file_name = results_path / "Fractional_contribution"
-plt.savefig(file_name)
-plt.pause(0.1)
-
-grouped_data = np.vstack(data_store)
-fig, ax = plt.subplots()
-processed_data = np.zeros((grouped_data.shape[0], 3))
-processed_data[:, 0] = grouped_data[:, 0]
-processed_data[:, 1] = (grouped_data[:, 1] - grouped_data[:, 3]) ** 2
-processed_data[:, 2] = (grouped_data[:, 2] - grouped_data[:, 4]) ** 2
-norm = Normalize(vmin=0, vmax=1)
-g = ax.scatter(
-    processed_data[:, 1],
-    processed_data[:, 2],
-    c=processed_data[:, 0],
-    norm=norm,
-    cmap="copper",
-)
-ax.set_xlabel("Amplitude Distance")
-ax.set_ylabel("Frequency Distance")
-plt.colorbar(g, ax=ax, label="Normed Euclidean Distance")
-file_name = results_path / "Distance_representation"
-plt.savefig(file_name)
-plt.pause(0.1)
-pdb.set_trace()
+    grouped_data = np.vstack(data_store)
+    fig, ax = plt.subplots()
+    processed_data = np.zeros((grouped_data.shape[0], 3))
+    processed_data[:, 0] = grouped_data[:, 0]
+    processed_data[:, 1] = (grouped_data[:, 1] - grouped_data[:, 3]) ** 2
+    processed_data[:, 2] = (grouped_data[:, 2] - grouped_data[:, 4]) ** 2
+    norm = Normalize(vmin=0, vmax=1)
+    g = ax.scatter(
+        processed_data[:, 1],
+        processed_data[:, 2],
+        c=processed_data[:, 0],
+        norm=norm,
+        cmap="copper",
+    )
+    ax.set_xlabel("Amplitude Distance")
+    ax.set_ylabel("Frequency Distance")
+    plt.colorbar(g, ax=ax, label="Normed Euclidean Distance")
+    file_name = results_path / "Distance_representation"
+    plt.savefig(file_name)
+    plt.pause(0.1)
+    pdb.set_trace()
