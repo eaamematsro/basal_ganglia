@@ -15,7 +15,7 @@ from itertools import product
 from SineGeneration.analyze_models import set_plt_params, make_axis_nice
 
 
-def split_dataset(dataset, fractions: Sequence = (0.2, 0.6, 0.2)):
+def split_dataset(dataset, fractions: Sequence = (0.05, 0.65, 0.2)):
     train_set, val_set, test_set = random_split(dataset, fractions)
     train_sampler = RandomSampler(train_set)
     val_sampler = RandomSampler(train_set)
@@ -29,7 +29,7 @@ set_plt_params()
 
 ## Train network to produce 1 sine
 duration = 300
-training_steps = 15
+training_steps = 25
 batch_size = 1
 amplitudes = (0.5, 1.5)
 frequencies = (0.5, 1.5)
@@ -243,6 +243,7 @@ if model_path.exists():
         ax.scatter(
             range(len(loss_data)), loss_data, label=label, color=color_cycle[idx]
         )
+        ax.plot(range(len(loss_data)), loss_data, color=color_cycle[idx], ls='--')
         ax.fill_between(
             range(len(loss_data)),
             np.array(loss_data) - np.array(vars),

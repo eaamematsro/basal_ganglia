@@ -161,13 +161,12 @@ def abline(
         axes.plot(x_vals, y_vals, ls=ls, label=label, color=color, **kwargs)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     task = "SineGeneration"
 
     cwd = Path().cwd()
     data_path = cwd / f"data/models/{task}"
-
 
     date_folders = [x for x in data_path.iterdir() if x.is_dir()]
 
@@ -189,7 +188,6 @@ if __name__ == '__main__':
     #
     # target_amplitudes = tuple(value * freq_norm for value in target_frequencies)
     # target_frequencies = tuple(value * freq_norm for value in target_frequencies)
-
 
     pairwise_distance_store = []
     parameter_store = []
