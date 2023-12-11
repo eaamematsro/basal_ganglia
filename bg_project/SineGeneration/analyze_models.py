@@ -12,7 +12,7 @@ from pacman.multigain_pacman import split_dataset
 from torch.utils.data import DataLoader, RandomSampler, random_split
 from itertools import product
 from matplotlib.colors import Normalize
-from typing import Tuple
+from typing import Tuple, Union, List
 
 
 def set_plt_params(
@@ -25,7 +25,7 @@ def set_plt_params(
     ytick_label_size: int = 16,
     ticksize: float = 5,
     fig_title_size: int = 34,
-    style: str = "ggplot",
+    style: str = "fast",
     font: str = "avenir",
     file_format: str = "svg",
     fig_dpi: int = 500,
@@ -89,6 +89,41 @@ def set_plt_params(
     plt.rcParams["axes.spines.right"] = False
     plt.rcParams["axes.spines.left"] = True
     plt.rcParams["axes.spines.bottom"] = True
+
+
+def make_axis_nice(
+    ax: Union[plt.Axes, plt.Figure] = None,
+    offset: int = 10,
+    line_width: float = 0.5,
+    spines: List = None,
+    color: str = None,
+):
+    """Makes axis pretty
+    This function modifies the x and y axis so that there is a vertical and horizontal gap between them
+    Args:
+        ax: This is the axis (axes) that need to be changed. When this argument is a fig all axes of the fig
+        get modified
+        offset: Size of the gap.
+        line_width: Linew width of the new axes.
+        spines:
+        color:
+    """
+    if ax is None:
+        ax = plt.gca()
+
+    if spines is None:
+        spines = ["left", "bottom"]
+    if type(ax) == plt.Figure:
+        ax_list = ax.axes
+    else:
+        ax_list = [ax]
+
+    for ax in ax_list:
+        for spine in spines:
+            ax.spines[spine].set_linewidth(line_width)
+            if color is not None:
+                ax.spines[spine].set_color(color)
+            ax.spines[spine].set_position(("outward", offset))
 
 
 def linear_map(data: np.ndarray, n_dimensions: int = 2):

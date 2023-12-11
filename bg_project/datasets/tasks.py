@@ -404,7 +404,6 @@ class GenerateSinePL(Task):
                     cluster_probs[:, 0] = 1
                     bg_inputs = {"cluster_probs": cluster_probs}
                 else:
-
                     parameters_amp = np.unique(parameters.cpu()[:, 0, 0])
                     parameters_freq = np.unique(parameters.cpu()[:, 1, 0])
                     tuples = [
@@ -417,6 +416,7 @@ class GenerateSinePL(Task):
                         for tup in tuples
                         if tup not in cluster_keys
                     ]
+
                     cluster_probs = torch.zeros(
                         (batch_size, self.network.bg.nclusters),
                         device=self.network.Wout.device,

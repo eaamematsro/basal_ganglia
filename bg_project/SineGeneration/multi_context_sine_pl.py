@@ -28,7 +28,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     batch_size = 64
     three_phase_training = False
-    n_trials = 5
+    n_trials = 50
 
     for trial in range(n_trials):
         for nbg in [10]:
@@ -60,7 +60,6 @@ if __name__ == "__main__":
                 accelerator="gpu",
                 devices=1,
                 default_root_dir=save_path,
-                strategy="ddp_find_unused_parameters_true",
             )
             trainer.fit(
                 model=simple_model,
@@ -70,7 +69,7 @@ if __name__ == "__main__":
 
             trainer.test(simple_model, dataloaders=DataLoader(test_set, num_workers=10))
 
-            # simple_model.save_model()
+            simple_model.save_model()
             # for batch_idx, batch in enumerate(val_loader):
             #     simple_model.evaluate_training(batch)
             # Second Training Phase #
@@ -127,7 +126,6 @@ if __name__ == "__main__":
                 accelerator="gpu",
                 devices=1,
                 default_root_dir=save_path,
-                strategy="ddp_find_unused_parameters_true",
             )
             trainer.fit(
                 model=thalamic_model,
