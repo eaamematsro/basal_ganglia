@@ -242,8 +242,10 @@ if __name__ == "__main__":
 
             fig.tight_layout()
             file_name = date_results_path / "behavior_plot"
+            make_axis_nice(fig)
             fig.savefig(file_name)
             plt.pause(0.1)
+            pdb.set_trace()
             parameters, cluster_ids, cluster_centers = trained_task.get_cluster_means()
             pairwise_distance = pairwise_distances(cluster_centers)
             pairwise_distance_store.append(pairwise_distance / pairwise_distance.max())

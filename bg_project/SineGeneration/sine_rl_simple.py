@@ -39,7 +39,7 @@ tau = 0.15
 lr, wd = 1e-3, 1e-6
 plot_freq = 25
 
-train_set, val_set, test_set = split_dataset(dataset, (0.01, 0.79, 0.2))
+train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 train_loader = DataLoader(
     train_set["data"],
@@ -243,7 +243,7 @@ if model_path.exists():
         ax.scatter(
             range(len(loss_data)), loss_data, label=label, color=color_cycle[idx]
         )
-        ax.plot(range(len(loss_data)), loss_data, color=color_cycle[idx], ls='--')
+        ax.plot(range(len(loss_data)), loss_data, color=color_cycle[idx], ls="--")
         ax.fill_between(
             range(len(loss_data)),
             np.array(loss_data) - np.array(vars),

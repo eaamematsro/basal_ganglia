@@ -603,9 +603,14 @@ class GenerateSinePL(Task):
 
     def evaluate_network_clusters(self, go_cues: torch.Tensor):
         n_clusters = self.network.bg.nclusters
+
+        parameters = torch.zeros((n_clusters, 2))
+        cluster_probs = torch.zeros((n_clusters, n_clusters))
+        for key, value in self.cluster_labels.items():
+            parameters[value] = torch.from_numpy(np.asarray(key))
+            cluster_probs[value, value] = 1
         duration = go_cues.shape[-1]
         go_cues = go_cues[:n_clusters]
-        cluster_probs = torch.eye(n_clusters)
         position_store = torch.zeros(
             duration,
             n_clusters,
@@ -620,7 +625,10 @@ class GenerateSinePL(Task):
         self.network.rnn.reset_state(n_clusters)
         with torch.no_grad():
             for time in range(duration):
-                rnn_input = {"cues": go_cues[0, :, time]}
+                rnn_input = {
+                    "cues": torch.tile(go_cues[0, :, time], dims=(n_clusters, 1)),
+                    "target_parameters": parameters,
+                }
                 outputs = self.network(
                     bg_inputs=bg_inputs, rnn_inputs=rnn_input, noise_scale=0
                 )
