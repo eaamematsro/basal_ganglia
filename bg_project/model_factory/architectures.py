@@ -206,8 +206,6 @@ class RNNMultiContextInput(BaseArchitecture):
 
         # bg_input = next(iter(bg_inputs.values()))
         # bg_act = self.bg
-        # rnn_inputs.update({"contextual": self.bg.T})
-        # r_hidden, r_act = self.rnn.forward(inputs={}, **kwargs)
 
         if "cluster_probs" in bg_inputs.keys():
             cluster_probs = bg_inputs["cluster_probs"]
