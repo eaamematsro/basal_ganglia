@@ -350,7 +350,10 @@ class RNNGMM(BaseArchitecture):
             )
 
         bg_act = self.bg(cluster_probs)
-        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
+        try:
+            r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
+        except RuntimeError:
+            pdb.set_trace()
         return {
             "r_hidden": r_hidden,
             "r_act": r_act,

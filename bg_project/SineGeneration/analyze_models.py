@@ -217,91 +217,103 @@ if __name__ == "__main__":
             if hasattr(trained_task, "results_path"):
                 date_results_path = trained_task.results_path
 
-            outputs, activity = trained_task.evaluate_network_clusters(go_cues)
-            var_activity = np.var(activity, axis=0).mean(axis=0)
-            prob_neuron = var_activity / var_activity.sum()
-            fig, ax = plt.subplots(10, ncols=2, figsize=(12, 20), sharex="col")
-            neurons = np.random.choice(
-                activity.shape[2], neurons_to_plot, p=prob_neuron, replace=False
-            )
-            for idx, axes in enumerate(ax):
-                if idx == 0:
-                    axes[0].set_title("Behavior")
-                    axes[1].set_title("Neural Activity")
-                axes[0].plot(go_cues[0, 0], label="Go", c="green", ls="--")
-                axes[0].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
-                axes[0].plot(
-                    outputs[:, idx],
+            if trained_task.param_normalizers is not None:
+
+                outputs, activity = trained_task.evaluate_network_clusters(go_cues)
+                var_activity = np.var(activity, axis=0).mean(axis=0)
+                prob_neuron = var_activity / var_activity.sum()
+                fig, ax = plt.subplots(10, ncols=2, figsize=(12, 20), sharex="col")
+                neurons = np.random.choice(
+                    activity.shape[2], neurons_to_plot, p=prob_neuron, replace=False
                 )
-                axes[0].set_ylim([-1.75, 1.75])
-                axes[1].plot(go_cues[0, 0], label="Go", c="green", ls="--")
-                axes[1].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
-                axes[1].plot(activity[:, idx, neurons])
-            ax[-1, 0].set_xlabel("Time")
-            ax[-1, 1].set_xlabel("Time")
+                for idx, axes in enumerate(ax):
+                    if idx == 0:
+                        axes[0].set_title("Behavior")
+                        axes[1].set_title("Neural Activity")
+                    axes[0].plot(go_cues[0, 0], label="Go", c="green", ls="--")
+                    axes[0].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
+                    axes[0].plot(
+                        outputs[:, idx],
+                    )
+                    axes[0].set_ylim([-1.75, 1.75])
+                    axes[1].plot(go_cues[0, 0], label="Go", c="green", ls="--")
+                    axes[1].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
+                    axes[1].plot(activity[:, idx, neurons])
+                ax[-1, 0].set_xlabel("Time")
+                ax[-1, 1].set_xlabel("Time")
 
-            fig.tight_layout()
-            file_name = date_results_path / "behavior_plot"
-            make_axis_nice(fig)
-            fig.savefig(file_name)
-            plt.pause(0.1)
-            pdb.set_trace()
-            parameters, cluster_ids, cluster_centers = trained_task.get_cluster_means()
-            pairwise_distance = pairwise_distances(cluster_centers)
-            pairwise_distance_store.append(pairwise_distance / pairwise_distance.max())
-            parameter_store.append(parameters)
-            augmented_data_matrix = np.zeros((np.product(pairwise_distance.shape), 5))
-
-            for idx, (row, col) in enumerate(
-                product(
-                    range(pairwise_distance.shape[0]), range(pairwise_distance.shape[1])
+                fig.tight_layout()
+                file_name = date_results_path / "behavior_plot"
+                make_axis_nice(fig)
+                fig.savefig(file_name)
+                plt.pause(0.1)
+                (
+                    parameters,
+                    cluster_ids,
+                    cluster_centers,
+                ) = trained_task.get_cluster_means()
+                pairwise_distance = pairwise_distances(cluster_centers)
+                pairwise_distance_store.append(
+                    pairwise_distance / pairwise_distance.max()
                 )
-            ):
-                augmented_data_matrix[idx, 0] = (
-                    pairwise_distance[row, col] / pairwise_distance.max()
+                parameter_store.append(parameters)
+                augmented_data_matrix = np.zeros(
+                    (np.product(pairwise_distance.shape), 5)
                 )
-                augmented_data_matrix[idx, 1:3] = parameters[row]
-                augmented_data_matrix[idx, 3:] = parameters[col]
 
-            test = np.hstack(
-                [
-                    (pairwise_distance / pairwise_distance.max()).flatten(),
-                    parameters.flatten(),
-                ]
-            )
-            data_store.append(augmented_data_matrix)
-            center_pca = PCA()
-            transformed = center_pca.fit_transform(cluster_centers)
-            gains = np.linspace(-1, 1)
-            # amp_model = Ridge()
-            # amp_model.fit(transformed[:, :2] ** 2, parameters[:, 0] ** 2)
-            # amp_coeff = amp_model.coef_ / np.linalg.norm(amp_model.coef_)
-            # amp_score = amp_model.score(transformed[:, :2], parameters[:, 0])
+                for idx, (row, col) in enumerate(
+                    product(
+                        range(pairwise_distance.shape[0]),
+                        range(pairwise_distance.shape[1]),
+                    )
+                ):
+                    augmented_data_matrix[idx, 0] = (
+                        pairwise_distance[row, col] / pairwise_distance.max()
+                    )
+                    augmented_data_matrix[idx, 1:3] = parameters[row]
+                    augmented_data_matrix[idx, 3:] = parameters[col]
 
-            freq_model = Ridge()
-            freq_model.fit(transformed[:, :2], parameters[:, 1])
-            freq_score = freq_model.score(transformed[:, :2], parameters[:, 1])
-            freq_coeff = freq_model.coef_ / np.linalg.norm(freq_model.coef_)
-            frequency_score.append(freq_score)
-            pc1_freq.append(freq_coeff[0] ** 2 / (freq_coeff**2).sum())
-            freq_vec = gains[:, None] * freq_coeff
-            plt.figure()
-            plt.title(f"{freq_score: 0.3f}")
+                test = np.hstack(
+                    [
+                        (pairwise_distance / pairwise_distance.max()).flatten(),
+                        parameters.flatten(),
+                    ]
+                )
+                data_store.append(augmented_data_matrix)
+                center_pca = PCA()
+                transformed = center_pca.fit_transform(cluster_centers)
+                gains = np.linspace(-1, 1)
+                # amp_model = Ridge()
+                # amp_model.fit(transformed[:, :2] ** 2, parameters[:, 0] ** 2)
+                # amp_coeff = amp_model.coef_ / np.linalg.norm(amp_model.coef_)
+                # amp_score = amp_model.score(transformed[:, :2], parameters[:, 0])
 
-            plt.scatter(
-                transformed[:, 0],
-                transformed[:, 1],
-                c=linear_map(parameters, n_dimensions=1),
-            )
-            abline(freq_coeff[1] / freq_coeff[0], label="Freq Encoding", intercept=0)
+                freq_model = Ridge()
+                freq_model.fit(transformed[:, :2], parameters[:, 1])
+                freq_score = freq_model.score(transformed[:, :2], parameters[:, 1])
+                freq_coeff = freq_model.coef_ / np.linalg.norm(freq_model.coef_)
+                frequency_score.append(freq_score)
+                pc1_freq.append(freq_coeff[0] ** 2 / (freq_coeff**2).sum())
+                freq_vec = gains[:, None] * freq_coeff
+                plt.figure()
+                plt.title(f"{freq_score: 0.3f}")
 
-            plt.xlabel("PC1")
-            plt.ylabel("PC2")
-            plt.legend()
-            file_name = date_results_path / "PCA_encoding_plot"
-            plt.savefig(file_name)
-            plt.pause(0.1)
-            plt.close("all")
+                plt.scatter(
+                    transformed[:, 0],
+                    transformed[:, 1],
+                    c=linear_map(parameters, n_dimensions=1),
+                )
+                abline(
+                    freq_coeff[1] / freq_coeff[0], label="Freq Encoding", intercept=0
+                )
+
+                plt.xlabel("PC1")
+                plt.ylabel("PC2")
+                plt.legend()
+                file_name = date_results_path / "PCA_encoding_plot"
+                plt.savefig(file_name)
+                plt.pause(0.1)
+                plt.close("all")
 
     plt.figure()
     plt.hist(freq_score, density=True)

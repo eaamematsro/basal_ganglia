@@ -604,22 +604,23 @@ class GenerateSinePL(Task):
     def evaluate_network_clusters(self, go_cues: torch.Tensor):
         n_clusters = self.network.bg.nclusters
 
-        parameters = torch.zeros((n_clusters, 2))
-        cluster_probs = torch.zeros((n_clusters, n_clusters))
+        parameters = torch.zeros((n_clusters, 2), device=self.network.Wout.device)
+        cluster_probs = torch.zeros(
+            (n_clusters, n_clusters), device=self.network.Wout.device
+        )
         for key, value in self.cluster_labels.items():
             parameters[value] = torch.from_numpy(np.asarray(key))
             cluster_probs[value, value] = 1
         duration = go_cues.shape[-1]
-        go_cues = go_cues[:n_clusters]
+        go_cues = go_cues[:n_clusters].to(self.network.Wout.device)
         position_store = torch.zeros(
-            duration,
-            n_clusters,
-            1,
+            duration, n_clusters, 1, device=self.network.Wout.device
         )
         activity_store = torch.zeros(
             duration,
             n_clusters,
             self.network.rnn.J.shape[0],
+            device=self.network.Wout.device,
         )
         bg_inputs = {"cluster_probs": cluster_probs}
         self.network.rnn.reset_state(n_clusters)
@@ -632,6 +633,7 @@ class GenerateSinePL(Task):
                 outputs = self.network(
                     bg_inputs=bg_inputs, rnn_inputs=rnn_input, noise_scale=0
                 )
+
                 position_store[time] = outputs["r_act"] @ self.network.Wout
                 activity_store[time] = outputs["r_act"]
 
