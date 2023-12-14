@@ -19,6 +19,7 @@ from .networks import (
     MultiHeadMLP,
     RNN,
     ThalamicRNN,
+    InputRNN,
     EncoderNetwork,
     DecoderNetwork,
     GaussianMixtureModel,
@@ -145,7 +146,7 @@ class RNNMultiContextInput(BaseArchitecture):
         bg_layer_sizes: Optional[Tuple[int, ...]] = None,
         n_classes: int = 20,
         bg_nfn: Optional[nn.Module] = None,
-        bg_input_size: Optional[int] = 1,
+        bg_input_size: int = 1,
         include_bias: bool = True,
         **kwargs,
     ):
@@ -161,13 +162,15 @@ class RNNMultiContextInput(BaseArchitecture):
             input_sources = {}
 
         input_sources.update({"contextual": (nbg, True)})
-        self.rnn = RNN(
+        self.rnn = InputRNN(
             nneurons=nneurons,
+            nbg=nbg,
             non_linearity=non_linearity,
             g0=g0,
             input_sources=input_sources,
             dt=dt,
             tau=tau,
+            bg_non_linearity=bg_nfn,
         )
         # self.bg = MLP(
         #     layer_sizes=bg_layer_sizes,
@@ -177,7 +180,19 @@ class RNNMultiContextInput(BaseArchitecture):
         #     include_bias=include_bias,
         # )
 
-        self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
+        self.classifier = MLP(
+            input_size=bg_input_size,
+            layer_sizes=bg_layer_sizes,
+            output_size=n_classes,
+            include_bias=include_bias,
+            non_linearity=bg_nfn,
+            std=1 / n_classes,
+            return_nnl=False,
+        )
+
+        self.bg = GaussianMixtureModel(
+            number_of_clusters=n_classes, latent_dimension=nbg
+        )
 
     def set_outputs(self):
         self.output_names = ["r_hidden", "r_act", "bg_act"]
@@ -191,9 +206,27 @@ class RNNMultiContextInput(BaseArchitecture):
 
         # bg_input = next(iter(bg_inputs.values()))
         # bg_act = self.bg
-        rnn_inputs.update({"contextual": self.bg.T})
-        r_hidden, r_act = self.rnn.forward(inputs={}, **kwargs)
-        return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": self.bg}
+        # rnn_inputs.update({"contextual": self.bg.T})
+        # r_hidden, r_act = self.rnn.forward(inputs={}, **kwargs)
+
+        if "cluster_probs" in bg_inputs.keys():
+            cluster_probs = bg_inputs["cluster_probs"]
+        else:
+            classifier_input = next(iter(bg_inputs.values()), None)
+            logits = self.classifier(classifier_input)
+
+            cluster_probs = nn.functional.softmax(
+                logits,
+            )
+
+        bg_act = self.bg(cluster_probs)
+        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
+        return {
+            "r_hidden": r_hidden,
+            "r_act": r_act,
+            "bg_act": bg_act,
+            "cluster_probs": cluster_probs,
+        }
 
     def description(
         self,
