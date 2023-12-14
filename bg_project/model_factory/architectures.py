@@ -235,6 +235,18 @@ class RNNMultiContextInput(BaseArchitecture):
             " via input vectors."
         )
 
+    def swap_grad_state(
+        self, grad_state: bool = True, params_to_swap: Optional[list] = None
+    ):
+        if params_to_swap is None:
+            params_to_swap = [self.rnn.gained_I, self.bg, self.classifier]
+        for param_group in params_to_swap:
+            if isinstance(param_group, torch.nn.parameter.Parameter):
+                param_group.requires_grad = grad_state
+            else:
+                for param in param_group.parameters():
+                    param.requires_grad = grad_state
+
 
 class RNNStaticBG(BaseArchitecture):
     def __init__(
