@@ -297,6 +297,105 @@ class ThalamicRNN(Module):
         self.r = self.nonlinearity(self.x)
 
 
+class InputRNN(Module):
+    def __init__(
+        self,
+        nneurons: int = 100,
+        nbg: int = 20,
+        non_linearity: Optional[nn.Module] = None,
+        th_non_linearity: Optional[nn.Module] = None,
+        bg_non_linearity: Optional[nn.Module] = None,
+        g0: float = 1.2,
+        input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+        dt: float = 5e-2,
+        tau: float = 0.15,
+        noise_model: Optional[nn.Module] = None,
+    ):
+        super(InputRNN, self).__init__()
+
+        if non_linearity is None:
+            non_linearity = nn.Softplus()
+
+        if th_non_linearity is None:
+            th_non_linearity = nn.Softplus()
+
+        if bg_non_linearity is None:
+            bg_non_linearity = nn.Sigmoid()
+
+        if noise_model is None:
+            noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
+
+        self.nbg = nbg
+        self.nonlinearity = non_linearity
+        self.th_nonlinearity = th_non_linearity
+        self.bg_nonlinearity = bg_non_linearity
+
+        self.I = nn.ParameterDict({})
+
+        if input_sources is not None:
+            for input_name, (input_size, learnable) in input_sources.items():
+                input_mat = np.random.randn(input_size, nneurons) / np.sqrt(nneurons)
+                input_tens = torchify(input_mat)
+                if learnable:
+                    self.I[input_name] = nn.Parameter(input_tens)
+                else:
+                    self.I[input_name] = input_tens
+
+        J_mat = g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons)
+        J_mat = torchify(J_mat)
+        self.input_names = set(list(self.I.keys()))
+        self.J = nn.Parameter(J_mat)
+        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
+        self.gained_I = nn.Parameter(torchify(np.random.randn(nbg, nneurons)))
+        self.x, self.r = None, None
+        self.dt = dt
+        self.tau = tau
+        self.noise_model = noise_model
+
+    def forward(
+        self,
+        r_thalamic: Optional[torch.Tensor] = None,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+        noise_scale: float = 0.1,
+        validate_inputs: bool = False,
+    ):
+        if inputs is None:
+            inputs = {}
+        if validate_inputs:
+            input_names = set(list(inputs.keys()))
+            assert input_names.intersection(self.input_names) == input_names
+        out = 0
+        for input_name, input_value in inputs.items():
+            out += input_value @ self.I[input_name]
+
+        if r_thalamic is None:
+            r_thalamic = torch.zeros((self.r.shape[0], self.nbg))
+
+        r_mat = 2 * self.bg_nonlinearity(
+            r_thalamic
+        )  # Optional centers bg_nonlinearity at 1
+
+        contextual_inputs = r_mat @ self.gained_I
+
+        x = self.x + self.dt / self.tau * (
+            self.noise_model(
+                -self.x + self.r @ self.J + contextual_inputs + self.B + out,
+                noise_scale,
+            )
+        )
+
+        r = self.nonlinearity(x)
+        self.x = x
+        self.r = r
+        return self.x, self.r
+
+    def reset_state(self, batch_size: int = 10):
+        self.x = torch.randn(
+            (batch_size, self.J.shape[0]), device=self.J.device
+        ) / np.sqrt(self.J.shape[0])
+        self.r = self.nonlinearity(self.x)
+
+
 class MLP(Module):
     def __init__(
         self,
