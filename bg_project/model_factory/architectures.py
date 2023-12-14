@@ -24,6 +24,8 @@ from .networks import (
     GaussianMixtureModel,
 )
 
+# TODO: Implement a network with a set of input vectors
+
 
 class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
     def __init__(self, task: Optional[str] = None, **kwargs):
@@ -141,6 +143,7 @@ class RNNMultiContextInput(BaseArchitecture):
         dt: float = 0.05,
         tau: float = 0.15,
         bg_layer_sizes: Optional[Tuple[int, ...]] = None,
+        n_classes: int = 20,
         bg_nfn: Optional[nn.Module] = None,
         bg_input_size: Optional[int] = 1,
         include_bias: bool = True,
