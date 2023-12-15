@@ -16,7 +16,7 @@ plt.style.use("ggplot")
 def split_dataset(dataset, fractions: Sequence = (0.6, 0.2, 0.2)):
     train_set, val_set, test_set = random_split(dataset, fractions)
     train_sampler = RandomSampler(train_set)
-    val_sampler = RandomSampler(train_set)
+    val_sampler = RandomSampler(val_set)
     train = {"data": train_set, "sampler": train_sampler}
     val = {"data": val_set, "sampler": val_sampler}
 
@@ -37,7 +37,7 @@ if __name__ == "__main__":
             )
 
             simple_model = GenerateSinePL(
-                network="GMM", duration=duration, nbg=nbg, n_classes=25
+                network="RNNMultiContextInput", duration=duration, nbg=nbg, n_classes=25
             )
 
             train_set, val_set, test_set = split_dataset(dataset, (0.6, 0.2, 0.2))
@@ -73,7 +73,6 @@ if __name__ == "__main__":
             # for batch_idx, batch in enumerate(val_loader):
             #     simple_model.evaluate_training(batch)
             # Second Training Phase #
-
             if three_phase_training:
                 amplitudes = (1,)
                 frequencies = tuple(np.linspace(0.5, 2, 5).tolist())
@@ -88,7 +87,7 @@ if __name__ == "__main__":
                 )
 
             thalamic_model = GenerateSinePL(
-                network="GMM",
+                network="RNNMultiContextInput",
                 nbg=nbg,
                 n_context=2,
                 duration=duration,

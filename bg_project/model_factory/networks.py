@@ -346,7 +346,9 @@ class InputRNN(Module):
         self.input_names = set(list(self.I.keys()))
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
-        self.gained_I = nn.Parameter(torchify(np.random.randn(nbg, nneurons)))
+        self.gained_I = nn.Parameter(
+            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nbg))
+        )
         self.x, self.r = None, None
         self.dt = dt
         self.tau = tau

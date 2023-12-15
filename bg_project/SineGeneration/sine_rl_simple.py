@@ -18,7 +18,7 @@ from SineGeneration.analyze_models import set_plt_params, make_axis_nice
 def split_dataset(dataset, fractions: Sequence = (0.05, 0.65, 0.2)):
     train_set, val_set, test_set = random_split(dataset, fractions)
     train_sampler = RandomSampler(train_set)
-    val_sampler = RandomSampler(train_set)
+    val_sampler = RandomSampler(val_set)
     train = {"data": train_set, "sampler": train_sampler}
     val = {"data": val_set, "sampler": val_sampler}
 

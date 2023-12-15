@@ -30,7 +30,7 @@ set_plt_params()
 ## Train network to produce 1 sine
 
 duration = 300
-training_steps = 10
+training_steps = 100
 consolidation_epochs = 50
 consolidation_freq = 1
 batch_size = 1
@@ -40,7 +40,7 @@ n_replays = 30
 dataset = SineDataset(duration=duration, amplitudes=amplitudes, frequencies=frequencies)
 dt = 0.01
 tau = 0.15
-lr, wd = 1e-6, 1e-6
+lr, wd = 1e-5, 2.5e0
 plot_freq = 25
 
 fraction = 0.6
@@ -90,9 +90,8 @@ if model_path.exists():
         for epoch in range(training_steps):
             epoch_errors = []
             epoch_errors_no_bg = []
-            optimizer = torch.optim.Adam([trained_task.network.rnn.J], lr=lr)
-            trained_task.network.rnn.J.requires_grad = True
             for batch in train_loader:
+                means.requires_grad = False
                 (timing_cues, contexts), y = batch
                 inputs = {"cues": timing_cues, "parameters": contexts}
                 trained_task.network.rnn.reset_state(2 * batch_size)
@@ -100,12 +99,6 @@ if model_path.exists():
                     duration, 3 * batch_size, 1, device=trained_task.network.Wout.device
                 )
 
-                activity_store = torch.zeros(
-                    duration,
-                    3 * batch_size,
-                    trained_task.network.Wout.shape[0],
-                    device=trained_task.network.Wout.device,
-                )
                 parameters_amp = contexts[0, 0, 0].cpu().numpy().item()
                 parameters_freq = contexts[0, 1, 0].cpu().numpy().item()
 
@@ -149,13 +142,11 @@ if model_path.exists():
                             bg_act, inputs=rnn_inputs
                         )
                         position_store[ti] = r_act @ trained_task.network.Wout
-                        activity_store[ti] = r_act
 
                 error = ((y.squeeze()[:, None] - position_store.squeeze()) ** 2).sum(
                     axis=0
                 )
                 if error[1] <= error[0]:
-                    beta = 2 / (1 + np.exp(-(error[0] - error[1]) / 10)) - 1
                     means[cluster_label] = (
                         beta * means[cluster_label] + (1 - beta) * bg_act[1]
                     )
@@ -169,8 +160,16 @@ if model_path.exists():
             loss_var_no_bg.append(
                 np.std(epoch_errors_no_bg) / np.sqrt(len(epoch_errors_no_bg))
             )
-
             loss_store = []
+            means.requires_grad = True
+            optimizer = torch.optim.Adam(
+                [
+                    trained_task.network.rnn.J,
+                    means,
+                ],
+                lr=lr,
+            )
+            trained_task.network.rnn.J.requires_grad = True
             if (epoch % consolidation_freq) == 0:
                 for replay_index, replay_batch in enumerate(train_loader_consolidation):
                     optimizer.zero_grad()
@@ -202,10 +201,10 @@ if model_path.exists():
                         cluster_labels.append(trained_task.cluster_labels[batch_tup])
                     bg_act = means[cluster_labels]
                     bg_act_consolidation = torch.zeros_like(bg_act)
-                    activity_store = torch.zeros(
+                    consolidation_target_store = torch.zeros(
                         duration,
                         timing_cues.shape[0],
-                        trained_task.network.Wout.shape[0],
+                        1,
                         device=trained_task.network.Wout.device,
                     )
 
@@ -219,9 +218,11 @@ if model_path.exists():
                             r_hidden, r_act = trained_task.network.rnn(
                                 bg_act, inputs=rnn_inputs
                             )
-                            activity_store[ti] = r_act
+                            consolidation_target_store[ti] = (
+                                r_act @ trained_task.network.Wout
+                            )
 
-                    output_activity = torch.zeros_like(activity_store)
+                    output_store = torch.zeros_like(consolidation_target_store)
                     trained_task.network.rnn.reset_state(timing_cues.shape[0])
                     for ti in range(duration):
                         rnn_inputs = {
@@ -231,13 +232,11 @@ if model_path.exists():
                         r_hidden, r_act = trained_task.network.rnn(
                             bg_act_consolidation, inputs=rnn_inputs
                         )
-                        output_activity[ti] = r_act
+                        output_store[ti] = r_act @ trained_task.network.Wout
 
                     loss_consolidation = (
-                        ((output_activity - activity_store) ** 2)
-                        .sum(axis=[1, 2])
-                        .mean()
-                    )
+                        (output_store - consolidation_target_store) ** 2
+                    ).sum(axis=[1, 2]).mean() + wd * torch.linalg.norm(means)
                     loss_consolidation.backward()
                     optimizer.step()
                     loss_store.append(loss_consolidation.item())
