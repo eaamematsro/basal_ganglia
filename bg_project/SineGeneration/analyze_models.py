@@ -1,5 +1,7 @@
 import pdb
 import pickle
+import torch
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -10,10 +12,13 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import Ridge
 from datasets.loaders import SineDataset
 from pacman.multigain_pacman import split_dataset
+from model_factory.factory_utils import torchify
+from torch.optim import Adam
 from torch.utils.data import DataLoader, RandomSampler, random_split
 from itertools import product, combinations
+import matplotlib.cm as cm
 from matplotlib.colors import Normalize
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Optional
 
 
 def set_plt_params(
@@ -162,6 +167,195 @@ def abline(
         axes.plot(x_vals, y_vals, ls=ls, label=label, color=color, **kwargs)
 
 
+def get_fixed_points(
+    model,
+    gain_vector: Optional[torch.Tensor] = None,
+    n_slow_points: int = 10,
+    max_training_epochs: int = 500000,
+    output_min: float = 1e-1,
+):
+    initial_states = torch.nn.Parameter(
+        1
+        * torch.randn(
+            (n_slow_points, model.network.Wout.shape[0]),
+            device=model.network.Wout.device,
+        )
+    )
+    optimizer = Adam([initial_states])
+    output_norms_gained = []
+    output_val = 1e4
+    epoch = 0
+
+    while (output_val > output_min) and (epoch < max_training_epochs):
+        optimizer.zero_grad()
+        output = model.network.one_step_update(initial_states, gain_vector)
+        loss = ((output) ** 2).sum(axis=1).mean()
+        output_norms_gained.append(loss.item())
+        output_val = loss.item()
+        epoch += 1
+        loss.backward()
+        optimizer.step()
+
+    return model.network.rnn.nonlinearity(initial_states).detach().cpu().numpy()
+
+
+def estimate_flow_field(
+    model,
+    pca_fit,
+    gain_vector,
+    n_divs: int = 15,
+    max_val: float = 40,
+    min_val: float = -20,
+    ndims: int = 2,
+    trajectory: Optional = None,
+    axis: Optional = None,
+):
+    """Estimate the local flow field around a set of trajectories"""
+
+    # Need to add means back
+
+    assert ndims in [2, 3]
+    pc_vals = []
+    for dim in range(ndims):
+        pc_vals.append(np.linspace(min_val, max_val * (1 / 2) ** dim, n_divs))
+
+    all_pcs = np.zeros((n_divs**ndims, pca_fit.n_components_))
+    gain_vector = torch.tile(gain_vector[0][None, :], dims=(n_divs**ndims, 1))
+    for idx, pcs in enumerate(product(*pc_vals)):
+        all_pcs[idx, :ndims] = pcs
+    full_d = pca_fit.inverse_transform(all_pcs)
+    initial_state = torchify(full_d)
+    with torch.no_grad():
+        flows = model.network.one_step_update(initial_state, gain_vector).cpu().numpy()
+        base_flows = model.network.one_step_update(initial_state).cpu().numpy()
+
+    latent_flows = (components[:ndims] @ flows.T).T
+    base_latent_flows = (components[:ndims] @ base_flows.T).T
+
+    delta_flow = latent_flows - base_latent_flows
+
+    if ndims == 3:
+        fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    else:
+        fig, ax = plt.subplots()
+
+    if ndims == 3:
+        plot_freq = 1
+        sample_index = np.random.choice(
+            all_pcs.shape[0],
+            int(all_pcs.shape[0] / plot_freq),
+            replace=False,
+        )
+        ax.quiver(
+            all_pcs[sample_index, 0],
+            all_pcs[sample_index, 1],
+            all_pcs[sample_index, 2],
+            latent_flows[sample_index, 0],
+            latent_flows[sample_index, 1],
+            latent_flows[sample_index, 2],
+            color="k",
+            arrow_length_ratio=0.5,
+            # length=1,
+        )
+        if trajectory is not None:
+            ax.plot(trajectory[:, 0], trajectory[:, 1], trajectory[:, 2], lw=2)
+            ax.scatter(
+                trajectory[0, 0],
+                trajectory[0, 1],
+                trajectory[0, 2],
+                color="green",
+                s=32,
+            )
+
+    else:
+        ax.quiver(
+            all_pcs[:, 0],
+            all_pcs[:, 1],
+            latent_flows[:, 0],
+            latent_flows[:, 1],
+            color="k",
+        )
+
+        if trajectory is not None:
+            ax.plot(trajectory[:, 0], trajectory[:, 1], lw=2)
+            ax.scatter(
+                trajectory[0, 0],
+                trajectory[0, 1],
+                color="green",
+                s=32,
+            )
+            ax.scatter(
+                trajectory[-1, 0],
+                trajectory[-1, 1],
+                color="red",
+                s=32,
+            )
+
+    if axis is not None:
+        axis.quiver(
+            all_pcs[:, 0],
+            all_pcs[:, 1],
+            delta_flow[:, 0],
+            delta_flow[:, 1],
+            # color=cmap(norm(delta_flow)),
+        )
+
+    return fig
+
+
+def estimate_perturbed_flows(
+    model,
+    base_activity,
+    pca_fit,
+    gain_vector,
+    noise_scale: float = 0.25,
+    num_iterations: int = 50,
+    ndims: int = 2,
+    axis: Optional = None,
+    plot_freq: int = 50,
+):
+    based_hidden_activity = torchify(base_activity)
+    perturbed_activities = []
+    flows = []
+    gain_vector = torch.tile(gain_vector[0][None, :], dims=(base_activity.shape[0], 1))
+
+    for trial in range(num_iterations):
+        perturbed_activity = based_hidden_activity + (
+            noise_scale * torch.sqrt(torch.abs(based_hidden_activity)) + 1
+        ) * torch.randn_like(based_hidden_activity)
+        with torch.no_grad():
+            resultant_flow = (
+                model.network.one_step_update(perturbed_activity, gain_vector)
+                .cpu()
+                .numpy()
+            )
+        perturbed_activities.append(perturbed_activity.cpu().numpy())
+        flows.append(resultant_flow)
+
+    stacked_flows = np.vstack(flows)
+    stacked_inits = np.vstack(perturbed_activities)
+
+    latent_flows = pca_fit.transform(stacked_flows)
+    latent_inits = pca_fit.transform(stacked_inits)
+
+    sample_index = np.random.choice(
+        latent_flows.shape[0],
+        int(latent_flows.shape[0] / plot_freq),
+        replace=False,
+    )
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    ax.quiver(
+        latent_inits[sample_index, 0],
+        latent_inits[sample_index, 1],
+        latent_inits[sample_index, 2],
+        latent_flows[sample_index, 0],
+        latent_flows[sample_index, 1],
+        latent_flows[sample_index, 2],
+    )
+    plt.pause(0.1)
+    pdb.set_trace()
+
+
 def update_projection(ax, axi, projection="rectilinear", fig=None):
     if fig is None:
         fig = plt.gcf()
@@ -188,7 +382,7 @@ if __name__ == "__main__":
         model_store_paths.extend(data)
     training_outputs = []
     allowed_networks = [
-        "RNNGMM",
+        "RNNMultiContextInput",
     ]
     target_amplitudes = (0.5, 1.5)
     target_frequencies = (1.5, 0.75)
@@ -250,18 +444,25 @@ if __name__ == "__main__":
                         )
                         if task_parameters[idx1, 1] == task_parameters[idx2, 1]
                     ]
-                    outputs, activity = trained_task.evaluate_network_clusters(go_cues)
+                    (
+                        outputs,
+                        activity,
+                        hidden_activity,
+                    ) = trained_task.evaluate_network_clusters(go_cues)
 
                     # create N x CT matrix
-                    stacked_activity = activity.transpose(2, 1, 0).reshape(
-                        activity.shape[-1], -1
+                    stacked_activity = hidden_activity.transpose(2, 1, 0).reshape(
+                        hidden_activity.shape[-1], -1
                     )
                     neural_pca = PCA()
                     neural_pca.fit(stacked_activity.T)
 
+                    all_trajectories = neural_pca.transform(stacked_activity.T)
+
                     # get principal components [component, features]
 
                     components = neural_pca.components_
+
                     inverse_matrix = components.T
                     var_activity = np.var(activity, axis=0).mean(axis=0)
                     prob_neuron = var_activity / var_activity.sum()
@@ -271,7 +472,7 @@ if __name__ == "__main__":
                     readout_statistics = np.zeros((task_parameters.shape[0], 3))
                     for idx in range(activity.shape[1]):
                         condition_pca = PCA()
-                        condition_pca.fit(activity[:, idx])
+                        condition_pca.fit(hidden_activity[:, idx])
                         condition_components.append(condition_pca.components_)
 
                         overlap_with_output = np.min(
@@ -299,11 +500,10 @@ if __name__ == "__main__":
                     ax_overlap[0].set_xlabel("Amplitude")
                     ax_overlap[1].set_xlabel("Frequency")
                     fig_overlap.supylabel("Readout Overlap")
+                    fig_overlap.tight_layout()
                     make_axis_nice(fig_overlap)
                     file_name = date_results_path / "readout_alignment_plot"
                     fig_overlap.savefig(file_name)
-
-                    fig_overlap.tight_layout()
 
                     if project_3d:
                         fig, ax = plt.subplots(
@@ -316,7 +516,7 @@ if __name__ == "__main__":
                         )
                     else:
                         fig, ax = plt.subplots(
-                            4,
+                            3,
                             ncols=10,
                             figsize=(20, 24),
                             sharex="row",
@@ -329,6 +529,15 @@ if __name__ == "__main__":
                         # if idx == 0:
                         #     axes[0].set_title("Behavior")
                         #     axes[1].set_title("Neural Activity")
+                        cluster_prob = torch.zeros(
+                            (outputs.shape[1]), device=trained_task.network.Wout.device
+                        )
+                        cluster_prob[idx] = 1
+                        with torch.no_grad():
+                            gain_vector = trained_task.network.bg(cluster_prob)
+
+                        # slow_points = get_fixed_points(trained_task, gain_vector)
+
                         if project_3d:
                             for axis in axes[[0, 1, 3]]:
                                 update_projection(ax, axis, fig=fig)
@@ -342,13 +551,34 @@ if __name__ == "__main__":
                         axes[1].plot(go_cues[0, 0], label="Go", c="green", ls="--")
                         axes[1].plot(go_cues[0, 1], label="Stop", c="red", ls="--")
                         axes[1].plot(activity[:, idx, neurons])
-                        projections = components[:3] @ activity[:, idx].T
-                        if project_3d:
-                            axes[2].plot(projections[0], projections[1], projections[2])
-                        else:
-                            axes[2].plot(projections[0], projections[1])
+                        # projections = components[:3] @ hidden_activity[:, idx].T
+                        projections = neural_pca.transform(hidden_activity[:, idx])
+                        fig_flow = estimate_flow_field(
+                            trained_task,
+                            neural_pca,
+                            gain_vector,
+                            axis=axes[2],
+                            trajectory=projections[:, :3],
+                            min_val=all_trajectories.min(),
+                            max_val=all_trajectories.max(),
+                        )
+                        make_axis_nice(fig_flow)
+                        fig_flow.supxlabel("PC1")
+                        fig_flow.supylabel("PC2")
+                        file_name = date_results_path / f"solution_flowfield_plot_{idx}"
+                        fig_overlap.savefig(file_name)
+                        # slow_point_projections = components[:3] @ slow_points.T
+                        # if project_3d:
+                        #     axes[2].plot(projections[0], projections[1], projections[2])
+                        # else:
+                        #     axes[2].plot(projections[0], projections[1])
+                        #     # axes[2].scatter(
+                        #     #     slow_point_projections[0],
+                        #     #     slow_point_projections[1],
+                        #     #     color="red",
+                        #     # )
 
-                        plt.pause(0.1)
+                    make_axis_nice(fig)
                     excursion_means = []
                     comparisons = []
 
@@ -489,10 +719,11 @@ if __name__ == "__main__":
                     file_name = date_results_path / "PCA_encoding_plot"
                     plt.savefig(file_name)
                     plt.pause(0.1)
+                    pdb.set_trace()
                     plt.close("all")
 
     plt.figure()
-    plt.hist(freq_score, density=True)
+    plt.hist(frequency_score, density=True)
     plt.xlabel("Goodness of Fit")
     file_name = results_path / "goodness_of_fit_dist"
     plt.savefig(file_name)

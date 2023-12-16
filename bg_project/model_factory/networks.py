@@ -296,6 +296,42 @@ class ThalamicRNN(Module):
         ) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
+    def next_state(
+        self,
+        initial_state: torch.Tensor,
+        r_thalamic: torch.Tensor,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+    ):
+
+        if inputs is None:
+            inputs = {}
+
+        out = 0
+        for input_name, input_value in inputs.items():
+            out += input_value @ self.I[input_name]
+        r = self.nonlinearity(initial_state)
+
+        if r_thalamic is None:
+            r_thalamic = torch.zeros((r.shape[0], self.U.shape[1]))
+
+        r_mat = torch.diag_embed(
+            2 * self.bg_nonlinearity(r_thalamic)
+        )  # Optional centers bg_nonlinearity at 1
+
+        thalamic_drive = self.th_nonlinearity(r @ self.V.T)
+        gain_modulated_drive = torch.matmul(r_mat, thalamic_drive.T)
+        indices = range(r.shape[0])
+        effective_drive = gain_modulated_drive[indices, :, indices]
+        effective_input = effective_drive @ self.U.T
+        r = self.nonlinearity(initial_state)
+
+        output = (
+            self.dt
+            / self.tau
+            * (-initial_state + r @ self.J + effective_input + self.B + out)
+        )
+        return output
+
 
 class InputRNN(Module):
     def __init__(
@@ -396,6 +432,38 @@ class InputRNN(Module):
             (batch_size, self.J.shape[0]), device=self.J.device
         ) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
+
+    def next_state(
+        self,
+        initial_state: torch.Tensor,
+        r_thalamic: torch.Tensor,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+    ):
+
+        if inputs is None:
+            inputs = {}
+
+        out = 0
+        for input_name, input_value in inputs.items():
+            out += input_value @ self.I[input_name]
+        r = self.nonlinearity(initial_state)
+
+        if r_thalamic is None:
+            r_thalamic = torch.zeros((r.shape[0], self.nbg))
+
+        r_mat = 2 * self.bg_nonlinearity(
+            r_thalamic
+        )  # Optional centers bg_nonlinearity at 1
+
+        contextual_inputs = r_mat @ self.gained_I
+        r = self.nonlinearity(initial_state)
+
+        output = (
+            self.dt
+            / self.tau
+            * (-initial_state + r @ self.J + contextual_inputs + self.B + out)
+        )
+        return output
 
 
 class MLP(Module):

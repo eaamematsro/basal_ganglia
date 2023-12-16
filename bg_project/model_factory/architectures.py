@@ -247,6 +247,28 @@ class RNNMultiContextInput(BaseArchitecture):
                 for param in param_group.parameters():
                     param.requires_grad = grad_state
 
+    def get_input_stats(
+        self,
+        classifier_input: torch.Tensor,
+        cluster_probs: Optional[torch.Tensor] = None,
+    ) -> (torch.Tensor, torch.Tensor):
+
+        with torch.no_grad():
+            if cluster_probs is None:
+                cluster_logits = self.classifier(classifier_input)
+                cluster_probs = nn.functional.softmax(cluster_logits, dim=1)
+            cluster_ids = torch.argmax(cluster_probs, dim=1)
+            cluster_means = self.bg.means(cluster_probs)
+        return cluster_ids, cluster_means
+
+    def one_step_update(
+        self,
+        initialization: torch.Tensor,
+        gain_vector: Optional[torch.Tensor] = None,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+    ):
+        return self.rnn.next_state(initialization, gain_vector, inputs)
+
 
 class RNNStaticBG(BaseArchitecture):
     def __init__(
@@ -437,6 +459,14 @@ class RNNGMM(BaseArchitecture):
             cluster_ids = torch.argmax(cluster_probs, dim=1)
             cluster_means = self.bg.means(cluster_probs)
         return cluster_ids, cluster_means
+
+    def one_step_update(
+        self,
+        initialization: torch.Tensor,
+        gain_vector: Optional[torch.Tensor] = None,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+    ):
+        return self.rnn.next_state(initialization, gain_vector, inputs)
 
 
 class RNNFeedbackBG(BaseArchitecture):

@@ -622,6 +622,8 @@ class GenerateSinePL(Task):
             self.network.rnn.J.shape[0],
             device=self.network.Wout.device,
         )
+
+        hidden_units_store = torch.zeros_like(activity_store)
         bg_inputs = {"cluster_probs": cluster_probs}
         self.network.rnn.reset_state(n_clusters)
         with torch.no_grad():
@@ -636,10 +638,12 @@ class GenerateSinePL(Task):
 
                 position_store[time] = outputs["r_act"] @ self.network.Wout
                 activity_store[time] = outputs["r_act"]
+                hidden_units_store[time] = outputs["r_hidden"]
 
         return (
             position_store.squeeze().cpu().numpy(),
             activity_store.squeeze().cpu().numpy(),
+            hidden_units_store.squeeze().cpu().numpy(),
         )
 
 
