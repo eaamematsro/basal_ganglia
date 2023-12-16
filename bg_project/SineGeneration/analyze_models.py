@@ -382,8 +382,10 @@ if __name__ == "__main__":
         model_store_paths.extend(data)
     training_outputs = []
     allowed_networks = [
-        "RNNMultiContextInput",
+        "RNNGMM", "RNNMultiContextInput",
     ]
+
+    network_data = {key: {"label": key, "data": []} for key in allowed_networks}
     target_amplitudes = (0.5, 1.5)
     target_frequencies = (1.5, 0.75)
     max_components = 40
@@ -421,6 +423,7 @@ if __name__ == "__main__":
             if hasattr(trained_task, "results_path"):
                 date_results_path = trained_task.results_path
             if trained_task.network.params["network"] in allowed_networks:
+                network_type = trained_task.network.params["network"]
                 if trained_task.param_normalizers is not None:
                     task_parameters = np.zeros((len(trained_task.cluster_labels), 2))
                     for (amp, freq), value in trained_task.cluster_labels.items():
@@ -697,6 +700,7 @@ if __name__ == "__main__":
                     freq_score = freq_model.score(transformed[:, :2], parameters[:, 1])
                     freq_coeff = freq_model.coef_ / np.linalg.norm(freq_model.coef_)
                     frequency_score.append(freq_score)
+                    network_data[network_type]["data"].append(freq_score)
                     pc1_freq.append(freq_coeff[0] ** 2 / (freq_coeff**2).sum())
                     freq_vec = gains[:, None] * freq_coeff
                     plt.figure()
@@ -719,22 +723,25 @@ if __name__ == "__main__":
                     file_name = date_results_path / "PCA_encoding_plot"
                     plt.savefig(file_name)
                     plt.pause(0.1)
-                    pdb.set_trace()
                     plt.close("all")
 
     plt.figure()
-    plt.hist(frequency_score, density=True)
+    for key, value in network_data.items():
+        label = value["label"]
+        stored_frequencies = value["data"]
+        plt.hist(stored_frequencies, density=True, label=label, alpha=0.5)
+    plt.legend()
     plt.xlabel("Goodness of Fit")
     file_name = results_path / "goodness_of_fit_dist"
     plt.savefig(file_name)
     plt.pause(0.1)
 
-    plt.figure()
-    plt.hist(pc1_freq, density=True)
-    plt.xlabel("PC1 Fractional Contribution")
-    file_name = results_path / "Fractional_contribution"
-    plt.savefig(file_name)
-    plt.pause(0.1)
+    # plt.figure()
+    # plt.hist(pc1_freq, density=True)
+    # plt.xlabel("PC1 Fractional Contribution")
+    # file_name = results_path / "Fractional_contribution"
+    # plt.savefig(file_name)
+    # plt.pause(0.1)
 
     grouped_data = np.vstack(data_store)
     # fig, ax = plt.subplots()
