@@ -347,7 +347,7 @@ class InputRNN(Module):
         self.J = nn.Parameter(J_mat)
         self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
         self.gained_I = nn.Parameter(
-            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nbg))
+            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons))
         )
         self.x, self.r = None, None
         self.dt = dt

@@ -39,7 +39,7 @@ tau = 0.15
 lr, wd = 1e-3, 1e-6
 plot_freq = 25
 
-fraction = 0.01
+fraction = 0.05
 train_set, val_set, test_set = split_dataset(dataset, (fraction, 0.8 - fraction, 0.2))
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 train_loader = DataLoader(
@@ -195,6 +195,6 @@ cwd = Path(__file__).parent.parent.parent / "results/GenerateSinePL"
 file_name = cwd / "rl_learning_curve"
 ax.set_xlabel("Training Epochs")
 make_axis_nice(fig)
-# fig.savefig(file_name)
+fig.savefig(file_name)
 plt.pause(0.1)
 pdb.set_trace()
