@@ -55,27 +55,6 @@ train_loader = DataLoader(
     num_workers=10,
 )
 
-network_data = {
-    "RNNGMM": {"label": "Basal Ganglia", "data": []},
-    "RNNMultiContextInput": {"label": "Input Only", "data": []},
-}
-
-
-model_path = Path(
-    "/home/elom/Documents/basal_ganglia/data/models/SineGeneration/2023-12-10/model_0/model.pickle"
-)
-
-input_model_path = Path(
-    "//home/elom/Documents/basal_ganglia/data/models/SineGeneration/2023-12-14/model_0/model.pickle"
-)
-
-model_path_names = [
-    "//home/elom/Documents/basal_ganglia/data/models/SineGeneration/2023-12-14/model_10/model.pickle",
-    "//home/elom/Documents/basal_ganglia/data/models/SineGeneration/2023-12-14/model_8/model.pickle",
-    "/home/elom/Documents/basal_ganglia/data/models/SineGeneration/2023-12-10/model_1/model.pickle",
-    "/home/elom/Documents/basal_ganglia/data/models/SineGeneration/2023-12-10/model_0/model.pickle",
-]
-
 task = "SineGeneration"
 
 cwd = Path().cwd()
@@ -89,9 +68,6 @@ set_plt_params()
 model_store_paths = []
 for data in folders:
     model_store_paths.extend(data)
-# pdb.set_trace()
-#
-# model_paths = [Path(name) for name in model_path_names]
 
 train_bg = True
 train_J = False
@@ -142,6 +118,7 @@ for model_path in model_store_paths:
             n_clusters = trained_task.network.bg.nclusters
             latent_dim = trained_task.network.bg.latent_dim
             trained_task.cluster_labels = {}
+
         means = torch.zeros(
             n_clusters, latent_dim, device=trained_task.network.Wout.device
         )
@@ -156,7 +133,8 @@ for model_path in model_store_paths:
                 epoch_errors = []
                 for batch in train_loader:
                     (timing_cues, contexts), y = batch
-
+                    timing_cues = timing_cues.to(trained_task.network.Wout.device)
+                    contexts = contexts.to(trained_task.network.Wout.device)
                     inputs = {"cues": timing_cues, "parameters": contexts}
 
                     trained_task.network.rnn.reset_state(2 * batch_size)
@@ -230,36 +208,3 @@ for model_path in model_store_paths:
                 )
 
             training_storer.to_csv(csv_file_path, index=None)
-        network_data[network_type]["data"].append(loss)
-
-color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-fig, ax = plt.subplots()
-
-for idx, (key, value) in enumerate(network_data.items()):
-    label = value["label"]
-    losses = np.vstack(value["data"])
-    mean_loss = losses.mean(axis=0)
-    loss_std = losses.std(axis=0)
-
-    ax.scatter(
-        range(mean_loss.shape[0]), mean_loss, label=label, color=color_cycle[idx]
-    )
-    ax.plot(range(mean_loss.shape[0]), mean_loss, color=color_cycle[idx], ls="--")
-    ax.fill_between(
-        range(mean_loss.shape[0]),
-        mean_loss - loss_std,
-        mean_loss + loss_std,
-        alpha=0.5,
-        color=color_cycle[idx],
-    )
-
-plt.legend()
-ax.set_yscale("log")
-ax.set_ylabel("Error")
-cwd = Path(__file__).parent.parent.parent / "results/GenerateSinePL"
-file_name = cwd / "rl_learning_curve"
-ax.set_xlabel("Training Epochs")
-make_axis_nice(fig)
-fig.savefig(file_name)
-plt.pause(0.1)
-pdb.set_trace()
