@@ -570,7 +570,7 @@ if __name__ == "__main__":
                         fig_flow.supxlabel("PC1")
                         fig_flow.supylabel("PC2")
                         file_name = date_results_path / f"solution_flowfield_plot_{idx}"
-                        fig_overlap.savefig(file_name)
+                        fig_flow.savefig(file_name)
                         # slow_point_projections = components[:3] @ slow_points.T
                         # if project_3d:
                         #     axes[2].plot(projections[0], projections[1], projections[2])
