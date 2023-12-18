@@ -382,7 +382,8 @@ if __name__ == "__main__":
         model_store_paths.extend(data)
     training_outputs = []
     allowed_networks = [
-        "RNNGMM", "RNNMultiContextInput",
+        "RNNGMM",
+        "RNNMultiContextInput",
     ]
 
     network_data = {key: {"label": key, "data": []} for key in allowed_networks}
