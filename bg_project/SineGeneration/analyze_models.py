@@ -224,7 +224,7 @@ def estimate_flow_field(
     for idx, pcs in enumerate(product(*pc_vals)):
         all_pcs[idx, :ndims] = pcs
     full_d = pca_fit.inverse_transform(all_pcs)
-    initial_state = torchify(full_d)
+    initial_state = torchify(full_d).to(model.network.Wout.device)
     with torch.no_grad():
         flows = model.network.one_step_update(initial_state, gain_vector).cpu().numpy()
         base_flows = model.network.one_step_update(initial_state).cpu().numpy()

@@ -24,7 +24,7 @@ if simple_rl_csv.exists():
         "hue": "network",
         "data": simple_data.loc[simple_data["pretrained"] == 1],
     }
-
+    plt.figure()
     g = sns.lineplot(**plt_params)
     g.set_yscale("log")
     g.set_xlabel("Epoch")
@@ -33,7 +33,6 @@ if simple_rl_csv.exists():
     file_name = results_path / f"rl_learning_curve"
     plt.savefig(file_name)
     plt.pause(0.1)
-    pdb.set_trace()
 
 
 if consolidation_rl_csv.exists():
@@ -45,7 +44,7 @@ if consolidation_rl_csv.exists():
         "hue": "network",
         "data": consolidation_data.loc[consolidation_data["pretrained"] == 1],
     }
-
+    plt.figure()
     g = sns.lineplot(**plt_params)
     g.set_yscale("log")
     g.set_xlabel("Epoch")
