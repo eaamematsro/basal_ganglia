@@ -1,0 +1,3 @@
+[submodule "bg_project/eaa_rl_algorithms"]
+	path = bg_project/eaa_rl_algorithms
+	url = https://github.com/eaamematsro/eaa_rl_algorithms.git

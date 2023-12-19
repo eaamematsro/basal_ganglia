@@ -19,10 +19,13 @@ from .networks import (
     MultiHeadMLP,
     RNN,
     ThalamicRNN,
+    InputRNN,
     EncoderNetwork,
     DecoderNetwork,
     GaussianMixtureModel,
 )
+
+# TODO: Implement a network with a set of input vectors
 
 
 class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
@@ -141,8 +144,9 @@ class RNNMultiContextInput(BaseArchitecture):
         dt: float = 0.05,
         tau: float = 0.15,
         bg_layer_sizes: Optional[Tuple[int, ...]] = None,
+        n_classes: int = 20,
         bg_nfn: Optional[nn.Module] = None,
-        bg_input_size: Optional[int] = 1,
+        bg_input_size: int = 1,
         include_bias: bool = True,
         **kwargs,
     ):
@@ -158,13 +162,15 @@ class RNNMultiContextInput(BaseArchitecture):
             input_sources = {}
 
         input_sources.update({"contextual": (nbg, True)})
-        self.rnn = RNN(
+        self.rnn = InputRNN(
             nneurons=nneurons,
+            nbg=nbg,
             non_linearity=non_linearity,
             g0=g0,
             input_sources=input_sources,
             dt=dt,
             tau=tau,
+            bg_non_linearity=bg_nfn,
         )
         # self.bg = MLP(
         #     layer_sizes=bg_layer_sizes,
@@ -174,7 +180,19 @@ class RNNMultiContextInput(BaseArchitecture):
         #     include_bias=include_bias,
         # )
 
-        self.bg = nn.Parameter(torchify(np.zeros((1, nneurons))))
+        self.classifier = MLP(
+            input_size=bg_input_size,
+            layer_sizes=bg_layer_sizes,
+            output_size=n_classes,
+            include_bias=include_bias,
+            non_linearity=bg_nfn,
+            std=1 / n_classes,
+            return_nnl=False,
+        )
+
+        self.bg = GaussianMixtureModel(
+            number_of_clusters=n_classes, latent_dimension=nbg
+        )
 
     def set_outputs(self):
         self.output_names = ["r_hidden", "r_act", "bg_act"]
@@ -188,9 +206,25 @@ class RNNMultiContextInput(BaseArchitecture):
 
         # bg_input = next(iter(bg_inputs.values()))
         # bg_act = self.bg
-        rnn_inputs.update({"contextual": self.bg.T})
-        r_hidden, r_act = self.rnn.forward(inputs={}, **kwargs)
-        return {"r_hidden": r_hidden, "r_act": r_act, "bg_act": self.bg}
+
+        if "cluster_probs" in bg_inputs.keys():
+            cluster_probs = bg_inputs["cluster_probs"]
+        else:
+            classifier_input = next(iter(bg_inputs.values()), None)
+            logits = self.classifier(classifier_input)
+
+            cluster_probs = nn.functional.softmax(
+                logits,
+            )
+
+        bg_act = self.bg(cluster_probs)
+        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
+        return {
+            "r_hidden": r_hidden,
+            "r_act": r_act,
+            "bg_act": bg_act,
+            "cluster_probs": cluster_probs,
+        }
 
     def description(
         self,
@@ -200,6 +234,40 @@ class RNNMultiContextInput(BaseArchitecture):
             "A RNN designed for multitasking that receives contextual inputs"
             " via input vectors."
         )
+
+    def swap_grad_state(
+        self, grad_state: bool = True, params_to_swap: Optional[list] = None
+    ):
+        if params_to_swap is None:
+            params_to_swap = [self.rnn.gained_I, self.bg, self.classifier]
+        for param_group in params_to_swap:
+            if isinstance(param_group, torch.nn.parameter.Parameter):
+                param_group.requires_grad = grad_state
+            else:
+                for param in param_group.parameters():
+                    param.requires_grad = grad_state
+
+    def get_input_stats(
+        self,
+        classifier_input: torch.Tensor,
+        cluster_probs: Optional[torch.Tensor] = None,
+    ) -> (torch.Tensor, torch.Tensor):
+
+        with torch.no_grad():
+            if cluster_probs is None:
+                cluster_logits = self.classifier(classifier_input)
+                cluster_probs = nn.functional.softmax(cluster_logits, dim=1)
+            cluster_ids = torch.argmax(cluster_probs, dim=1)
+            cluster_means = self.bg.means(cluster_probs)
+        return cluster_ids, cluster_means
+
+    def one_step_update(
+        self,
+        initialization: torch.Tensor,
+        gain_vector: Optional[torch.Tensor] = None,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+    ):
+        return self.rnn.next_state(initialization, gain_vector, inputs)
 
 
 class RNNStaticBG(BaseArchitecture):
@@ -288,7 +356,7 @@ class RNNGMM(BaseArchitecture):
         input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
         dt: float = 0.05,
         tau: float = 0.15,
-        bg_layer_sizes: Optional[Tuple[int, ...]] = (25, 15, 10),
+        bg_layer_sizes: Optional[Tuple[int, ...]] = (25, 15),
         bg_nfn: Optional[nn.Module] = None,
         bg_input_size: Optional[int] = 1,
         include_bias: bool = False,
@@ -318,6 +386,8 @@ class RNNGMM(BaseArchitecture):
             output_size=n_classes,
             include_bias=include_bias,
             non_linearity=bg_nfn,
+            std=1 / n_classes,
+            return_nnl=False,
         )
 
         self.bg = GaussianMixtureModel(
@@ -342,9 +412,16 @@ class RNNGMM(BaseArchitecture):
             classifier_input = next(iter(bg_inputs.values()), None)
             logits = self.classifier(classifier_input)
 
-            cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+            # cluster_probs = nn.functional.gumbel_softmax(logits, tau=tau, hard=hard)
+            cluster_probs = nn.functional.softmax(
+                logits,
+            )
+
         bg_act = self.bg(cluster_probs)
-        r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
+        try:
+            r_hidden, r_act = self.rnn(bg_act, inputs=rnn_inputs, **kwargs)
+        except RuntimeError:
+            pdb.set_trace()
         return {
             "r_hidden": r_hidden,
             "r_act": r_act,
@@ -369,6 +446,27 @@ class RNNGMM(BaseArchitecture):
             else:
                 for param in param_group.parameters():
                     param.requires_grad = grad_state
+
+    def get_input_stats(
+        self,
+        classifier_input: torch.Tensor,
+        cluster_probs: Optional[torch.Tensor] = None,
+    ) -> (torch.Tensor, torch.Tensor):
+        with torch.no_grad():
+            if cluster_probs is None:
+                cluster_logits = self.classifier(classifier_input)
+                cluster_probs = nn.functional.softmax(cluster_logits, dim=1)
+            cluster_ids = torch.argmax(cluster_probs, dim=1)
+            cluster_means = self.bg.means(cluster_probs)
+        return cluster_ids, cluster_means
+
+    def one_step_update(
+        self,
+        initialization: torch.Tensor,
+        gain_vector: Optional[torch.Tensor] = None,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+    ):
+        return self.rnn.next_state(initialization, gain_vector, inputs)
 
 
 class RNNFeedbackBG(BaseArchitecture):

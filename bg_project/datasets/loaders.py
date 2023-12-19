@@ -70,6 +70,15 @@ class SineDataset(Dataset):
         targets = np.zeros((duration, nsamples))
         parameters = np.zeros((2, duration, nsamples))
         times = np.arange(duration)
+
+        amp_var = np.std(amplitudes)
+        freq_var = np.std(frequencies)
+
+        if amp_var == 0:
+            amp_var = 1
+        if freq_var == 0:
+            freq_var = 1
+
         for idx, (pulse_start, pulse_stop, amplitude, frequency) in enumerate(
             product(start_times, stop_times, amplitudes, frequencies)
         ):
@@ -90,6 +99,9 @@ class SineDataset(Dataset):
             targets[(pulse_stop + delay) :, idx] = 0
             parameters[:, :, idx] = np.array([amplitude, frequency])[:, None]
 
+        parameters[0] /= amp_var
+        parameters[1] /= freq_var
+
         pulses = torchify(gaussian_filter1d(timing_pulses, sigma=5, axis=1))
         parameters = torchify(parameters)
         targets = torchify(targets)
@@ -97,6 +109,7 @@ class SineDataset(Dataset):
         self.contexts = parameters
         self.heights = targets
         self.samples = nsamples
+        self.normalizers = (1 / amp_var, 1 / freq_var)
 
     def __getitem__(self, item):
         """Returns a sample from the dataset"""

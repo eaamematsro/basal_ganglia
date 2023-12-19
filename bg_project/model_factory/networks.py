@@ -3,6 +3,7 @@ import pdb
 import torch
 import numpy as np
 import torch.nn as nn
+import torch.distributions as Dist
 from enum import Enum
 from torch.distributions.multivariate_normal import MultivariateNormal
 from .noise_models import GaussianNoise, GaussianSignalDependentNoise
@@ -295,6 +296,175 @@ class ThalamicRNN(Module):
         ) / np.sqrt(self.J.shape[0])
         self.r = self.nonlinearity(self.x)
 
+    def next_state(
+        self,
+        initial_state: torch.Tensor,
+        r_thalamic: torch.Tensor,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+    ):
+
+        if inputs is None:
+            inputs = {}
+
+        out = 0
+        for input_name, input_value in inputs.items():
+            out += input_value @ self.I[input_name]
+        r = self.nonlinearity(initial_state)
+
+        if r_thalamic is None:
+            r_thalamic = torch.zeros((r.shape[0], self.U.shape[1]))
+
+        r_mat = torch.diag_embed(
+            2 * self.bg_nonlinearity(r_thalamic)
+        )  # Optional centers bg_nonlinearity at 1
+
+        thalamic_drive = self.th_nonlinearity(r @ self.V.T)
+        gain_modulated_drive = torch.matmul(r_mat, thalamic_drive.T)
+        indices = range(r.shape[0])
+        effective_drive = gain_modulated_drive[indices, :, indices]
+        effective_input = effective_drive @ self.U.T
+        r = self.nonlinearity(initial_state)
+
+        output = (
+            self.dt
+            / self.tau
+            * (-initial_state + r @ self.J + effective_input + self.B + out)
+        )
+        return output
+
+
+class InputRNN(Module):
+    def __init__(
+        self,
+        nneurons: int = 100,
+        nbg: int = 20,
+        non_linearity: Optional[nn.Module] = None,
+        th_non_linearity: Optional[nn.Module] = None,
+        bg_non_linearity: Optional[nn.Module] = None,
+        g0: float = 1.2,
+        input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+        dt: float = 5e-2,
+        tau: float = 0.15,
+        noise_model: Optional[nn.Module] = None,
+    ):
+        super(InputRNN, self).__init__()
+
+        if non_linearity is None:
+            non_linearity = nn.Softplus()
+
+        if th_non_linearity is None:
+            th_non_linearity = nn.Softplus()
+
+        if bg_non_linearity is None:
+            bg_non_linearity = nn.Sigmoid()
+
+        if noise_model is None:
+            noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
+
+        self.nbg = nbg
+        self.nonlinearity = non_linearity
+        self.th_nonlinearity = th_non_linearity
+        self.bg_nonlinearity = bg_non_linearity
+
+        self.I = nn.ParameterDict({})
+
+        if input_sources is not None:
+            for input_name, (input_size, learnable) in input_sources.items():
+                input_mat = np.random.randn(input_size, nneurons) / np.sqrt(nneurons)
+                input_tens = torchify(input_mat)
+                if learnable:
+                    self.I[input_name] = nn.Parameter(input_tens)
+                else:
+                    self.I[input_name] = input_tens
+
+        J_mat = g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons)
+        J_mat = torchify(J_mat)
+        self.input_names = set(list(self.I.keys()))
+        self.J = nn.Parameter(J_mat)
+        self.B = nn.Parameter(torchify(np.random.randn(1, nneurons)))
+        self.gained_I = nn.Parameter(
+            torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons))
+        )
+        self.x, self.r = None, None
+        self.dt = dt
+        self.tau = tau
+        self.noise_model = noise_model
+
+    def forward(
+        self,
+        r_thalamic: Optional[torch.Tensor] = None,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+        noise_scale: float = 0.1,
+        validate_inputs: bool = False,
+    ):
+        if inputs is None:
+            inputs = {}
+        if validate_inputs:
+            input_names = set(list(inputs.keys()))
+            assert input_names.intersection(self.input_names) == input_names
+        out = 0
+        for input_name, input_value in inputs.items():
+            out += input_value @ self.I[input_name]
+
+        if r_thalamic is None:
+            r_thalamic = torch.zeros((self.r.shape[0], self.nbg))
+
+        r_mat = 2 * self.bg_nonlinearity(
+            r_thalamic
+        )  # Optional centers bg_nonlinearity at 1
+
+        contextual_inputs = r_mat @ self.gained_I
+
+        x = self.x + self.dt / self.tau * (
+            self.noise_model(
+                -self.x + self.r @ self.J + contextual_inputs + self.B + out,
+                noise_scale,
+            )
+        )
+
+        r = self.nonlinearity(x)
+        self.x = x
+        self.r = r
+        return self.x, self.r
+
+    def reset_state(self, batch_size: int = 10):
+        self.x = torch.randn(
+            (batch_size, self.J.shape[0]), device=self.J.device
+        ) / np.sqrt(self.J.shape[0])
+        self.r = self.nonlinearity(self.x)
+
+    def next_state(
+        self,
+        initial_state: torch.Tensor,
+        r_thalamic: torch.Tensor,
+        inputs: Optional[Dict[str, torch.Tensor]] = None,
+    ):
+
+        if inputs is None:
+            inputs = {}
+
+        out = 0
+        for input_name, input_value in inputs.items():
+            out += input_value @ self.I[input_name]
+        r = self.nonlinearity(initial_state)
+
+        if r_thalamic is None:
+            r_thalamic = torch.zeros((r.shape[0], self.nbg))
+
+        r_mat = 2 * self.bg_nonlinearity(
+            r_thalamic
+        )  # Optional centers bg_nonlinearity at 1
+
+        contextual_inputs = r_mat @ self.gained_I
+        r = self.nonlinearity(initial_state)
+
+        output = (
+            self.dt
+            / self.tau
+            * (-initial_state + r @ self.J + contextual_inputs + self.B + out)
+        )
+        return output
+
 
 class MLP(Module):
     def __init__(
@@ -573,14 +743,18 @@ class GaussianMixtureModel(Module):
         super().__init__()
 
         self.nclusters = number_of_clusters
-        self.means = nn.Parameter(
-            torchify(np.random.randn(number_of_clusters, latent_dimension))
+        self.latent_dim = latent_dimension
+
+        self.means = MLP(
+            input_size=number_of_clusters,
+            output_size=latent_dimension,
+            layer_sizes=(latent_dimension * 2,),
         )
-        self.cov = nn.Parameter(
-            torchify(
-                np.random.randn(number_of_clusters, latent_dimension)
-                / np.sqrt(latent_dimension)
-            )
+
+        self.cov = MLP(
+            input_size=number_of_clusters,
+            output_size=latent_dimension,
+            layer_sizes=(latent_dimension * 2,),
         )
 
     def forward(self, cluster_probs: torch.Tensor):
@@ -593,14 +767,11 @@ class GaussianMixtureModel(Module):
             z: Sampled latents. [batch, latent]
 
         """
-        means = (cluster_probs[:, :, None] * self.means).sum(dim=1)
-        covs = (cluster_probs[:, :, None] * torch.sqrt(torch.exp(self.cov))).sum(dim=1)
-        z = means + (
-            0
-            * covs
-            * torch.randn(
-                cluster_probs.shape[0], self.means.shape[1], device=cluster_probs.device
-            )
+
+        mean = self.means(cluster_probs)
+        covs = self.cov(cluster_probs)
+        z = mean + 0.1 * torch.sqrt(torch.exp(covs)) * torch.randn(
+            cluster_probs.shape[0], self.latent_dim, device=cluster_probs.device
         )
         return z
 
