@@ -1,2 +1,4 @@
 datasets
+eaa_rl_algorithms
 model_factory
+rl_games

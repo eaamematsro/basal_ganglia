@@ -1,14 +1,13 @@
 import argparse
 import os.path
-import optuna
 import pdb
 
 import gymnasium
 import wandb
 import time
-import matplotlib.pyplot as plt
 
 from rl_games.optimization import ContinuousPPO
+from eaa_rl_algorithms.models.algorithms.algorithms import PPO
 from torch.utils.tensorboard import SummaryWriter
 from distutils.util import strtobool
 
@@ -171,6 +170,7 @@ def objective(trial):
 
 
 if __name__ == "__main__":
+
     args = parse_args()
     run_name = f"{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
@@ -192,7 +192,12 @@ if __name__ == "__main__":
         % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    model = ContinuousPPO(writer, capture_videos=True, **vars(args))
+    model = PPO(
+        summary_writer=writer,
+        action_space="continuous",
+        capture_videos=True,
+        **vars(args),
+    )
     # study = optuna.create_study(direction="maximize")
     # study.optimize(objective, n_trials=100)
     # pdb.set_trace()
