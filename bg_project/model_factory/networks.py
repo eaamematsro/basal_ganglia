@@ -779,6 +779,138 @@ class GaussianMixtureModel(Module):
 # TODO(eamematsro): Add a feedforward multicontext network
 
 
+class BGRNN(RNN):
+    def __init__(
+        self,
+        nneurons: int = 100,
+        nthalamic: int = 10,
+        non_linearity: Optional[nn.Module] = None,
+        th_non_linearity: Optional[nn.Module] = None,
+        g0: float = 1.2,
+        input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+        dt: float = 5e-2,
+        tau: float = 0.15,
+        noise_model: Optional[nn.Module] = None,
+    ):
+        """
+        Base class for full thalamic-pallidal-cortical recurrent neural networks
+
+        Args:
+            nneurons: int, optional
+                Number of recurrently connected neurons to use. by default 100
+            nthalamic: int, optional
+                Number of thalamic/pallidal neurons.
+            non_linearity: nn.Module, optional
+                Activation function to use for neural responses. by default SoftPlus
+            th_non_linearity: nn.Module, optional
+                Activation function to use for thalamic neural responses. by default SoftPlus
+            g0: float, optional
+                Gain multiplier of initial recurrent weights.
+            input_sources: Dict[str, Tuple[int, bool], optional
+                A dictionary that stores external inputs to the RNN. Keys are given by the
+                input name and the values are a tuple consisting of an integer (corresponding to the
+                dimensionality of the input) and a boolean (corresponding to whether these weights
+                are learnable)
+            dt: float, optional
+                Network time step size, by default 0.05
+            tau: float, optional
+                Network membrane time constant, by default 0.15
+            noise_model:  nn.Module, optional
+                Model used to inject noise into neural activity, by default GaussianNoise
+        """
+        super(RNN, self).__init__()
+
+        if noise_model is None:
+            noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
+
+        if non_linearity is None:
+            non_linearity = nn.Softplus()
+
+        if th_non_linearity is None:
+            th_non_linearity = nn.Softplus()
+
+        self.nonlinearity = non_linearity
+        self.th_nonlinearity = th_non_linearity
+
+        self.I = nn.ParameterDict({})
+
+        if input_sources is not None:
+            for input_name, (input_size, learnable) in input_sources.items():
+                input_mat = np.random.randn(input_size, nneurons) / np.sqrt(nneurons)
+                input_tens = torchify(input_mat)
+                if learnable:
+                    self.I[input_name] = nn.Parameter(input_tens)
+                else:
+                    self.I[input_name] = input_tens
+
+        J_mat = g0 * np.random.randn(nneurons, nneurons) / np.sqrt(nneurons)
+        J_mat = torchify(J_mat)
+        self.input_names = set(list(self.I.keys()))
+        self.J = nn.Parameter(J_mat)
+        self.B = nn.Parameter(
+            torchify(np.random.randn(1, nneurons) / np.sqrt(nneurons))
+        )
+
+        U_mat = np.random.randn(nthalamic, nneurons) / np.sqrt(nthalamic)
+        V_mat = np.random.randn(nneurons, nthalamic) / np.sqrt(nneurons)
+        Wb = 0.1 * np.random.randn(nneurons, nthalamic) / np.sqrt(nneurons)
+        self.U = nn.Parameter(torchify(U_mat))
+        self.Vt = nn.Parameter(torchify(V_mat))
+        self.Wb = nn.Parameter(torchify(Wb))
+
+        self.noise_model = noise_model
+        self.x, self.r = None, None
+        self.dt = dt
+        self.tau = tau
+
+    def forward(
+        self,
+        inputs: Dict[str, torch.Tensor],
+        noise_scale: float = 0.1,
+        validate_inputs: bool = False,
+        max_val: float = 1e3,
+    ):
+        if validate_inputs:
+            input_names = set(list(inputs.keys()))
+            assert input_names.intersection(self.input_names) == input_names
+        out = 0
+        for input_name, input_value in inputs.items():
+            # print(input_name, input_value.shape, self.I[input_name].shape)
+            out += input_value @ self.I[input_name]
+        r_bg = self.th_nonlinearity(
+            self.noise_model(self.r @ (self.Vt + self.Wb), noise_scale)
+        )
+        r_th = self.th_nonlinearity(
+            self.noise_model(self.r @ self.Vt - r_bg, noise_scale)
+        )
+
+        x = torch.clip(
+            self.x
+            + self.dt
+            / self.tau
+            * (
+                self.noise_model(
+                    -self.x + self.r @ self.J + r_th @ self.U + self.B + out,
+                    noise_scale,
+                )
+            ),
+            -max_val,
+            max_val,
+        )
+
+        r = self.nonlinearity(x)
+        self.x = x
+        self.r = r
+        return self.x, self.r
+
+    def reset_state(self, batch_size: int = 10):
+
+        self.x = torch.randn(
+            (batch_size, self.J.shape[0]), device=self.J.device
+        ) / np.sqrt(self.J.shape[0])
+        self.r = self.nonlinearity(self.x)
+
+
 def transfer_network_weights(
     target_model: Module, source: Module, freeze: bool = False
 ) -> Module:
