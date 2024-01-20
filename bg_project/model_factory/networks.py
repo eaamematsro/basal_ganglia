@@ -878,10 +878,10 @@ class BGRNN(RNN):
             # print(input_name, input_value.shape, self.I[input_name].shape)
             out += input_value @ self.I[input_name]
         r_bg = self.th_nonlinearity(
-            self.noise_model(self.r @ (self.Vt + self.Wb), noise_scale)
+            (self.r @ (self.Vt + self.Wb), noise_scale)
         )
         r_th = self.th_nonlinearity(
-            self.noise_model(self.r @ self.Vt - r_bg, noise_scale)
+            (self.r @ self.Vt - r_bg, noise_scale)
         )
 
         x = torch.clip(
