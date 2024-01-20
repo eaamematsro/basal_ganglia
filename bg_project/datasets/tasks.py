@@ -443,7 +443,12 @@ class GenerateSinePL(Task):
             }
             outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
             position_store[ti] = outputs["r_act"] @ self.network.Wout
-            cluster_ids[ti] = torch.argmax(outputs["cluster_probs"], dim=1)
+            outuput_keys = outputs.keys()
+
+            if "cluster_probs" in outuput_keys:
+                cluster_ids[ti] = torch.argmax(outputs["cluster_probs"], dim=1)
+            else:
+                cluster_ids = None
 
         if return_clusters:
             return position_store, cluster_ids
