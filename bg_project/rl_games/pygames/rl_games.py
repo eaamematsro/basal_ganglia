@@ -103,10 +103,10 @@ class GridWorld(PyGame):
     def observe(self):
         obs = np.array(
             [
-                self.agent_pos[0],
-                self.target_pos[0],
-                self.agent_pos[1],
-                self.target_pos[1],
+                self.agent_pos[0] / self.width - 0.5,
+                self.target_pos[0] / self.width - 0.5,
+                self.agent_pos[1] / self.height - 0.5,
+                self.target_pos[1] / self.height - 0.5,
             ],
             dtype=np.float32,
         )

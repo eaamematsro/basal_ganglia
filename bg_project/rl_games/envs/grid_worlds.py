@@ -8,15 +8,16 @@ class GridWorldEnv(CustomEnv):
     def _initialize_spaces(self):
         self.action_space = spaces.Box(low=-20, high=20, shape=(2,), dtype=np.float32)
         self.observation_space = spaces.Box(
-            low=0,
-            high=np.array(
-                [
-                    self.pygame.width,
-                    self.pygame.width,
-                    self.pygame.height,
-                    self.pygame.height,
-                ]
-            ),
+            low=-0.5,
+            high=0.5,
+            # high=np.array(
+            #     [
+            #         self.pygame.width,
+            #         self.pygame.width,
+            #         self.pygame.height,
+            #         self.pygame.height,
+            #     ]
+            # ),
             shape=(4,),
             dtype=np.float32,
         )
@@ -31,14 +32,7 @@ class MultiWorldGridWorldEnv(CustomEnv):
         self.action_space = spaces.Box(low=-20, high=20, shape=(2,), dtype=np.float32)
         self.observation_space = spaces.Box(
             low=0,
-            high=np.array(
-                [
-                    self.pygame.width,
-                    self.pygame.width,
-                    self.pygame.height,
-                    self.pygame.height,
-                ]
-            ),
+            high=0.5,
             shape=(4,),
             dtype=np.float32,
         )
