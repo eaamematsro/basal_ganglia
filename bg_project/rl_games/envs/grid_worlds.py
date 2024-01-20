@@ -31,7 +31,7 @@ class MultiWorldGridWorldEnv(CustomEnv):
     def _initialize_spaces(self):
         self.action_space = spaces.Box(low=-20, high=20, shape=(2,), dtype=np.float32)
         self.observation_space = spaces.Box(
-            low=0,
+            low=-0.5,
             high=0.5,
             shape=(4,),
             dtype=np.float32,
