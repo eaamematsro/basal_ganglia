@@ -197,7 +197,7 @@ class ThalamicRNN(Module):
             torchify(np.random.randn(nbg, nneurons) / np.sqrt(nneurons)),
             requires_grad=True,
         )
-        # U, V = self.generate_bg_weights(nneurons=nneurons, rank=nbg)
+        # U, V = self.generate_bg_weights(nneurons=nneurons, rank=latent_dim)
         # self.U = nn.Parameter(torchify(U), requires_grad=False)
         # self.V = nn.Parameter(torchify(V), requires_grad=False)
         self.x, self.r = None, None

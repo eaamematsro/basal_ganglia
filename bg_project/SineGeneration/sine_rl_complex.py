@@ -10,7 +10,7 @@ from datasets.loaders import SineDataset
 from torch.utils.data import DataLoader, RandomSampler, random_split
 from torch.optim import Adam
 from model_factory.factory_utils import torchify
-from model_factory.architectures import RNNGMM, RNNMultiContextInput
+from model_factory.architectures import RNNGMM, RNNMultiContextInput, PallidalRNN
 from typing import Sequence, Union
 from pathlib import Path
 from itertools import product
@@ -25,6 +25,39 @@ def split_dataset(dataset, fractions: Sequence = (0.05, 0.65, 0.2)):
     val = {"data": val_set, "sampler": val_sampler}
 
     return train, val, test_set
+
+
+def gram_schmidt(matrix: np.ndarray):
+    """Create an orthonormal matrix from a set of vectors
+
+    Args:
+        matrix: collection of vectors to use to create orthonormal matrix
+            [vector, dimension]
+    Returns:
+        gram_matrix: orthonormal matrix spanning the space defined by the input vectors
+    """
+    nconstraints, dims = matrix.shape
+    Y = []
+    Y.append(matrix[0] / np.linalg.norm(matrix[0]))
+
+    for idx in range(dims - 1):
+        if idx + 1 < nconstraints:
+            temp_vec = matrix[idx + 1]
+        else:
+            temp_vec = np.random.randn(dims)
+
+        for orth_vector in Y:
+            temp_vec -= (
+                np.dot(temp_vec, orth_vector)
+                / np.dot(orth_vector, orth_vector)
+                * orth_vector
+            )
+
+        temp_vec /= np.linalg.norm(temp_vec)
+        Y.append(temp_vec)
+
+    gram_matrix = np.vstack(Y).T
+    return gram_matrix
 
 
 # TODO: Only train models that haven't already been trained
@@ -56,6 +89,9 @@ train_loader = DataLoader(
 )
 
 task = "SineGeneration"
+allowed_networks = [
+    "PallidalRNN",
+]
 
 cwd = Path().cwd()
 data_path = cwd / f"data/models/{task}"
@@ -73,7 +109,7 @@ train_bg = True
 train_J = False
 train_I = False
 
-csv_file_path = Path(__file__).parent / "rl_simple_training.csv"
+csv_file_path = Path(__file__).parent / "rl_complex_training.csv"
 
 if csv_file_path.exists():
     training_storer = pd.read_csv(csv_file_path, index_col=None)
@@ -108,103 +144,95 @@ for model_path in model_store_paths:
         with open(model_picke_path, "rb") as h:
             pickled_data = pickle.load(h)
 
-        trained_task: Union[RNNGMM, RNNMultiContextInput] = copy.deepcopy(
+        trained_task: Union[RNNGMM, RNNMultiContextInput, PallidalRNN] = copy.deepcopy(
             pickled_data["task"]
         )  # load trained network in memory
         network_type = trained_task.network.params["network"]
 
-        trained_task.network.rnn.reset_state(batch_size=10)
-        if hasattr(trained_task.network, "bg"):
-            n_clusters = trained_task.network.bg.nclusters
-            latent_dim = trained_task.network.bg.latent_dim
-            trained_task.cluster_labels = {}
+        if network_type in allowed_networks:
+            Vt = trained_task.network.rnn.Vt.detach().cpu().numpy()
+            nneurons, latent_dim = Vt.shape
+            gram_matrix = gram_schmidt(Vt.T).T
+            gram_matrix = torchify(gram_matrix).to(trained_task.network.Wout.device)
+            sigma = torch.zeros(
+                (2, latent_dim, nneurons), device=trained_task.network.Wout.device
+            )
+            # for i in range(latent_dim):
+            #     sigma[:, i, i] = 1
 
-        means = torch.zeros(
-            n_clusters, latent_dim, device=trained_task.network.Wout.device
-        )
-        cov = 0.25 * torch.ones(latent_dim, device=trained_task.network.Wout.device)
-        beta = 0.9
+            trained_task.network.rnn.reset_state(batch_size=10)
 
-        loss = []
+            cov = 0.05 * torch.ones(
+                latent_dim, nneurons, device=trained_task.network.Wout.device
+            )
+            beta = 0.9
 
-        ## Train BG via RL ##
-        if train_bg:
-            for epoch in range(training_steps):
-                epoch_errors = []
-                for batch in train_loader:
-                    (timing_cues, contexts), y = batch
-                    timing_cues = timing_cues.to(trained_task.network.Wout.device)
-                    contexts = contexts.to(trained_task.network.Wout.device)
-                    inputs = {"cues": timing_cues, "parameters": contexts}
+            loss = []
 
-                    trained_task.network.rnn.reset_state(2 * batch_size)
-                    position_store = torch.zeros(
-                        duration,
-                        2 * batch_size,
-                        1,
-                        device=trained_task.network.Wout.device,
+            ## Train BG via RL ##
+            if train_bg:
+                for epoch in range(training_steps):
+                    sigma[1] += cov * torch.randn(
+                        latent_dim, nneurons, device=trained_task.network.Wout.device
                     )
+                    epoch_errors = []
+                    for batch in train_loader:
+                        (timing_cues, contexts), y = batch
+                        timing_cues = timing_cues.to(trained_task.network.Wout.device)
+                        contexts = contexts.to(trained_task.network.Wout.device)
+                        inputs = {"cues": timing_cues, "parameters": contexts}
 
-                    parameters_amp = contexts[0, 0, 0].cpu().numpy().item()
-                    parameters_freq = contexts[0, 1, 0].cpu().numpy().item()
-                    tuples = ((round(parameters_amp, 4), round(parameters_freq, 4)),)
-                    cluster_keys = list(trained_task.cluster_labels.keys())
-                    [
-                        trained_task.cluster_labels.update(
-                            {tup: len(trained_task.cluster_labels)}
+                        position_store = torch.zeros(
+                            duration,
+                            2 * batch_size,
+                            1,
+                            device=trained_task.network.Wout.device,
                         )
-                        for tup in tuples
-                        if tup not in cluster_keys
-                    ]
-                    batch_tup = (
-                        round(contexts.cpu().numpy()[0, 0, 0], 4),
-                        round(contexts.cpu().numpy()[0, 1, 0], 4),
+
+                        parameters_amp = contexts[0, 0, 0].cpu().numpy().item()
+                        parameters_freq = contexts[0, 1, 0].cpu().numpy().item()
+
+                        with torch.no_grad():
+                            for run in range(2):
+                                trained_task.network.rnn.reset_state(batch_size)
+                                trained_task.network.rnn.Wb.data = (
+                                    sigma[run] @ gram_matrix
+                                ).T
+                                for ti in range(duration):
+                                    rnn_inputs = {
+                                        "cues": timing_cues[:, :, ti],
+                                        "target_parameters": contexts[:, :, ti],
+                                    }
+                                    r_hidden, r_act = trained_task.network.rnn(
+                                        inputs=rnn_inputs
+                                    )
+                                    position_store[ti, run] = (
+                                        r_act @ trained_task.network.Wout
+                                    )
+                        error = (
+                            (y.squeeze()[:, None] - position_store.squeeze()) ** 2
+                        ).sum(axis=0)
+                        if error[1] <= error[0]:
+                            sigma[0] = beta * sigma[0] + (1 - beta) * sigma[1]
+                        epoch_errors.append(np.min(error.numpy()))
+
+                    loss.append(np.mean(epoch_errors))
+                    epoch_data = {
+                        "date": date,
+                        "model_num": model_num,
+                        "epoch_num": epoch,
+                        "loss": np.mean(epoch_errors),
+                        "network": network_type,
+                        "pretrained": int(
+                            trained_task.network.params["ncontexts"] == 2
+                        ),
+                        "train_fraction": fraction,
+                    }
+
+                    temp_frame = pd.DataFrame(epoch_data, index=[0])
+
+                    training_storer = pd.concat(
+                        [training_storer, temp_frame], ignore_index=True
                     )
-
-                    cluster_label = trained_task.cluster_labels[batch_tup]
-                    bg_act = torch.zeros(
-                        (2 * batch_size, latent_dim),
-                        device=trained_task.network.Wout.device,
-                    )
-                    bg_act[0] = means[cluster_label]
-                    bg_act[1] = means[cluster_label] + cov * torch.randn(
-                        latent_dim, device=trained_task.network.Wout.device
-                    )
-                    with torch.no_grad():
-                        for ti in range(duration):
-                            rnn_inputs = {
-                                "cues": torch.tile(timing_cues[:, :, ti], dims=(2, 1)),
-                                "target_parameters": torch.tile(
-                                    contexts[:, :, ti], dims=(2, 1)
-                                ),
-                            }
-                            r_hidden, r_act = trained_task.network.rnn(
-                                bg_act, inputs=rnn_inputs
-                            )
-                            position_store[ti] = r_act @ trained_task.network.Wout
-                    error = (
-                        (y.squeeze()[:, None] - position_store.squeeze()) ** 2
-                    ).sum(axis=0)
-                    if error[1] <= error[0]:
-                        means[cluster_label] = (
-                            beta * means[cluster_label] + (1 - beta) * bg_act[1]
-                        )
-                    epoch_errors.append(np.min(error.numpy()))
-                loss.append(np.mean(epoch_errors))
-                epoch_data = {
-                    "date": date,
-                    "model_num": model_num,
-                    "epoch_num": epoch,
-                    "loss": np.mean(epoch_errors),
-                    "network": network_type,
-                    "pretrained": int(trained_task.network.params["ncontexts"] == 2),
-                    "train_fraction": fraction,
-                }
-
-                temp_frame = pd.DataFrame(epoch_data, index=[0])
-
-                training_storer = pd.concat(
-                    [training_storer, temp_frame], ignore_index=True
-                )
-
-            training_storer.to_csv(csv_file_path, index=None)
+                pdb.set_trace()
+                training_storer.to_csv(csv_file_path, index=None)

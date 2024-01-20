@@ -154,7 +154,7 @@ class RNNMultiContextInput(BaseArchitecture):
         super(RNNMultiContextInput, self).__init__(**kwargs)
         self.params = {
             "n_hidden": nneurons,
-            "nbg": nbg,
+            "latent_dim": nbg,
             "inputs": input_sources,
             "bg_layers": bg_layer_sizes,
             "network": type(self).__name__,
@@ -177,7 +177,7 @@ class RNNMultiContextInput(BaseArchitecture):
         #     layer_sizes=bg_layer_sizes,
         #     non_linearity=bg_nfn,
         #     input_size=bg_input_size,
-        #     output_size=nbg,
+        #     output_size=latent_dim,
         #     include_bias=include_bias,
         # )
 
@@ -290,7 +290,7 @@ class RNNStaticBG(BaseArchitecture):
         super(RNNStaticBG, self).__init__(**kwargs)
         self.params = {
             "n_hidden": nneurons,
-            "nbg": nbg,
+            "latent_dim": nbg,
             "inputs": input_sources,
             "bg_layers": bg_layer_sizes,
             "network": type(self).__name__,
@@ -320,7 +320,7 @@ class RNNStaticBG(BaseArchitecture):
         #     layer_sizes=bg_layer_sizes,
         #     non_linearity=bg_nfn,
         #     input_size=bg_input_size,
-        #     output_size=nbg,
+        #     output_size=latent_dim,
         #     include_bias=include_bias,
         # )
 
@@ -366,7 +366,7 @@ class RNNGMM(BaseArchitecture):
         super(RNNGMM, self).__init__(**kwargs)
         self.params = {
             "n_hidden": nneurons,
-            "nbg": nbg,
+            "latent_dim": nbg,
             "inputs": input_sources,
             "bg_layers": bg_layer_sizes,
             "network": type(self).__name__,
@@ -491,7 +491,7 @@ class RNNFeedbackBG(BaseArchitecture):
         super(RNNFeedbackBG, self).__init__(**kwargs)
         self.params = {
             "n_hidden": nneurons,
-            "nbg": nbg,
+            "latent_dim": nbg,
             "inputs": input_sources,
             "bg_ind_layers": bg_ind_layer_sizes,
             "bg_shared_layers": shared_layer_sizes,
