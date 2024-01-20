@@ -19,6 +19,7 @@ from .networks import (
     MultiHeadMLP,
     RNN,
     ThalamicRNN,
+    BGRNN,
     InputRNN,
     EncoderNetwork,
     DecoderNetwork,
@@ -677,10 +678,53 @@ class HRLNetwork(BaseArchitecture, ABC):
         self.output_names = ["actions", "cluster_ids", "latents", "cluster_probs"]
 
 
+class PallidalRNN(BaseArchitecture, ABC):
+    """A recurrent model of the Basal Ganglia - Thalamus - Cortex circuit"""
+
+    def __init__(
+        self,
+        nneurons: int = 100,
+        non_linearity: Optional[nn.Module] = None,
+        g0: float = 1.2,
+        input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
+        dt: float = 0.05,
+        tau: float = 0.15,
+        **kwargs,
+    ):
+        super(PallidalRNN, self).__init__(**kwargs)
+        self.params = {
+            "n_hidden": nneurons,
+            "inputs": input_sources,
+            "network": type(self).__name__,
+        }
+        self.rnn = BGRNN(
+            nneurons=nneurons,
+            non_linearity=non_linearity,
+            g0=g0,
+            input_sources=input_sources,
+            dt=dt,
+            tau=tau,
+        )
+
+    def set_outputs(self):
+        self.output_names = ["r_hidden", "r_act"]
+
+    def forward(self, rnn_inputs: Optional[Dict[str, torch.Tensor]] = None, **kwargs):
+        r_hidden, r_act = self.rnn.forward(rnn_inputs)
+        return {"r_hidden": r_hidden, "r_act": r_act}
+
+    def description(
+        self,
+    ):
+        """"""
+        print("A basic implementation of the pallidal-thalamo-cortical loop.")
+
+
 NETWORKS = {
     "VanillaRNN": VanillaRNN,
     "RNNStaticBG": RNNStaticBG,
     "RNNFeedbackBG": RNNFeedbackBG,
     "RNNMultiContextInput": RNNMultiContextInput,
     "GMM": RNNGMM,
+    "PallidalRNN": PallidalRNN,
 }
