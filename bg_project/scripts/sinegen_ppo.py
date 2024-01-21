@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument(
         "--gym-id",
         type=str,
-        default="GridWorld-v0",
+        default="SineGeneration-v0",
         help="The name of the gym environment",
     )
     parser.add_argument(
@@ -48,7 +48,7 @@ def parse_args():
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=500,
+        default=1024,
         help="Number of parallel environments to run",
     )
     parser.add_argument(
@@ -60,13 +60,13 @@ def parse_args():
     parser.add_argument(
         "--num-mini-batches",
         type=int,
-        default=4,
+        default=16,
         help="Number of minibatches per rollout",
     )
     parser.add_argument(
         "--num-update-epochs",
         type=int,
-        default=4,
+        default=16,
         help="Number of gradient steps per rollout",
     )
     parser.add_argument(
@@ -104,6 +104,14 @@ def parse_args():
         help="Whether to anneal actor learning rates",
     )
     parser.add_argument(
+        "--learn-exploration",
+        type=lambda x: bool(strtobool(x)),
+        default=False,
+        nargs="?",
+        const=True,
+        help="Whether to learn the exploration rates",
+    )
+    parser.add_argument(
         "--normalize-advantage",
         type=lambda x: bool(strtobool(x)),
         default=True,
@@ -130,7 +138,7 @@ def parse_args():
     parser.add_argument(
         "--wandb-project-name",
         type=str,
-        default="GridWorldRL",
+        default="SineGenRL",
         help="WandB project name",
     )
     parser.add_argument(
@@ -153,17 +161,21 @@ def make_env(gym_id):
 
 
 def objective(trial):
-    model = ContinuousPPO(
-        actor_lr=trial.suggest_float("actor_lr", 1e-5, 1e-1),
-        critic_lr=trial.suggest_float("critic_lr", 1e-5, 1e-1),
+    agent = RNN(input_dim=5, output_dim=1)
+    model = PPO(
+        actor=agent,
+        actor_lr=trial.suggest_float("actor_lr", 1e-5, 1e-2),
+        critic_lr=trial.suggest_float("critic_lr", 1e-5, 1e-2),
         num_mini_batches=trial.suggest_int("num_mini_batches", 4, 64),
         num_update_epochs=trial.suggest_int("num_update_epochs", 1, 20),
         capture_videos=False,
-        gym_id="Pendulum-v1",
+        gym_id="SineGeneration-v0",
         exp_name="tuning",
+        learn_exploration=False,
         seed=1,
         num_envs=1,
         num_steps=1024,
+        total_timesteps=1000,
     )
 
     model.learning()
@@ -194,14 +206,17 @@ if __name__ == "__main__":
     )
 
     agent = RNN(input_dim=5, output_dim=1)
+    critic = RNN(input_dim=5, output_dim=1)
+
     model = PPO(
         actor=agent,
+        critic=critic,
         summary_writer=writer,
         capture_videos=True,
         action_space="continuous",
         **vars(args),
     )
     # study = optuna.create_study(direction="maximize")
-    # study.optimize(objective, n_trials=100)
+    # study.optimize(objective, n_trials=10)
     # pdb.set_trace()
     model.learning()

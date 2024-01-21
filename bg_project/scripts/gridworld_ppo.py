@@ -8,6 +8,8 @@ import wandb
 import time
 
 from rl_games.optimization import ContinuousPPO
+from eaa_rl_algorithms.models.algorithms.algorithms import PPO, A2C
+from eaa_rl_algorithms.models.factory.networks import RNN
 from torch.utils.tensorboard import SummaryWriter
 from distutils.util import strtobool
 
@@ -191,7 +193,14 @@ if __name__ == "__main__":
         % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    model = ContinuousPPO(writer, capture_videos=True, **vars(args))
+    agent = RNN(input_dim=5, output_dim=1)
+    model = PPO(
+        actor=agent,
+        summary_writer=writer,
+        capture_videos=True,
+        action_space="continuous",
+        **vars(args),
+    )
     # study = optuna.create_study(direction="maximize")
     # study.optimize(objective, n_trials=100)
     # pdb.set_trace()
