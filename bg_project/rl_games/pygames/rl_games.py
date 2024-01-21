@@ -320,11 +320,12 @@ class SineGeneration(PyGame):
         amplitudes: Sequence[float] = (1,),
         phases: Sequence[float] = (0,),
         frequencies: Sequence[float] = (1,),
-        go_bounds: Sequence[float] = (0.15, 0.3),
-        stop_bounds: Sequence[float] = (0.65, 0.8),
-        duration: int = 3,
+        go_bounds: Sequence[float] = (0.05, 0.2),
+        stop_bounds: Sequence[float] = (0.75, 0.9),
+        hold_weight: float = 1,
+        duration: int = 5,
         step_size: float = 0.01,
-        tolerance: float = 0.5,
+        tolerance: float = 0.25,
         **kwargs,
     ) -> None:
         super().__init__(title=type(self).__name__, **kwargs)
@@ -332,6 +333,7 @@ class SineGeneration(PyGame):
         self.episode_length = int(duration / step_size)
         self.step_size = step_size
         self.tolerance = tolerance
+        self.hold_weight = hold_weight
 
         # Store sine parameters
         self.amplitudes = amplitudes
@@ -348,6 +350,8 @@ class SineGeneration(PyGame):
         self.target_position = None
         self.go_cue = None
         self.stop_cue = None
+        self.go_time = None
+        self.stop_time = None
         self.agent_pos = None
         self.agent_tracker = []
         self.amplitude = None
@@ -410,11 +414,13 @@ class SineGeneration(PyGame):
 
         times = np.arange(self.episode_length - go_time) * self.step_size
 
-        target[go_time:] = amplitude * np.sin(frequency * np.pi * (times + phase))
+        target[go_time:] = amplitude * np.sin(frequency * 2 * np.pi * (times + phase))
         target[stop_time:] = 0
         self.target_position = target
         self.stop_cue = stop_cue
         self.go_cue = go_cue
+        self.go_time = go_time
+        self.stop_time = stop_time
         self.amplitude = amplitude
         self.frequency = frequency
         self.phase = phase
@@ -432,8 +438,13 @@ class SineGeneration(PyGame):
         self.is_done()
 
     def evaluate(self):
-        error = (self.agent_pos - self.target_position[self.time_step]) ** 2
-        reward = np.exp(-1 * (error / self.tolerance) ** 2)
+        if (self.time_step <= self.go_time) or (self.time_step >= self.stop_time):
+            weight = self.hold_weight
+        else:
+            weight = 1
+
+        error = weight * (self.agent_pos - self.target_position[self.time_step]) ** 2
+        reward = np.exp(-1 * (error / (self.tolerance**2)))
 
         if type(reward) is float:
             self.reward = reward / self.episode_length
@@ -442,7 +453,7 @@ class SineGeneration(PyGame):
 
         self.score += self.reward
 
-        return reward
+        return self.reward
 
     def is_done(self):
         if self.time_step >= self.episode_length - 1:
@@ -453,6 +464,8 @@ class SineGeneration(PyGame):
         self.target_position = None
         self.go_cue = None
         self.stop_cue = None
+        self.go_time = None
+        self.stop_time = None
         self.agent_pos = None
         self.agent_tracker = []
         self.amplitude = None
