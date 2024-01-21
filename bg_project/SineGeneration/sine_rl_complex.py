@@ -234,5 +234,4 @@ for model_path in model_store_paths:
                     training_storer = pd.concat(
                         [training_storer, temp_frame], ignore_index=True
                     )
-                pdb.set_trace()
                 training_storer.to_csv(csv_file_path, index=None)
