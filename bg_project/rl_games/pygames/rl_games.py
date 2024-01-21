@@ -4,9 +4,12 @@ import pygame
 import random
 import abc
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.backends.backend_agg as agg
 from itertools import product
 from abc import ABC
-from typing import Dict
+from typing import Dict, Sequence, Tuple, Union
+from scipy.ndimage.filters import gaussian_filter1d
 
 
 class PyGame(metaclass=abc.ABCMeta):
@@ -20,6 +23,7 @@ class PyGame(metaclass=abc.ABCMeta):
     ):
         pygame.init()
         self.render_mode = None
+        self.font = pygame.font.SysFont("Arial_bold", 200)
         self.display = pygame.display.set_mode(size=(width, height))
         pygame.display.set_caption(title)
         self.fps = fps
@@ -85,7 +89,6 @@ class GridWorld(PyGame):
         )
         self.gain = 1
         self.drifts = np.zeros(2)
-        self.font = pygame.font.SysFont("Arial_bold", 200)
 
     def reset(self):
         """"""
@@ -309,3 +312,203 @@ class MultiWorldGridWorld(GridWorld):
                 + np.asarray(self.drifts)
             )
             self.agent_pos = pos
+
+
+class SineGeneration(PyGame):
+    def __init__(
+        self,
+        amplitudes: Sequence[float] = (1,),
+        phases: Sequence[float] = (0,),
+        frequencies: Sequence[float] = (1,),
+        go_bounds: Sequence[float] = (0.05, 0.15),
+        stop_bounds: Sequence[float] = (0.75, 0.85),
+        duration: int = 3,
+        step_size: float = 0.01,
+        tolerance: float = 0.25,
+        **kwargs,
+    ) -> None:
+        super().__init__(title=type(self).__name__, **kwargs)
+
+        self.episode_length = int(duration / step_size)
+        self.step_size = step_size
+        self.tolerance = tolerance
+
+        # Store sine parameters
+        self.amplitudes = amplitudes
+        self.phases = phases
+        self.frequencies = frequencies
+
+        # store timing parameters
+        self.go_bounds = go_bounds
+        self.stop_bounds = stop_bounds
+
+        # intialize state variables
+        self.font = pygame.font.SysFont("Arial_bold", 50)
+
+        self.target_position = None
+        self.go_cue = None
+        self.stop_cue = None
+        self.agent_pos = None
+        self.agent_tracker = []
+        self.amplitude = None
+        self.phase = None
+        self.frequency = None
+        self.done = False
+        self.reward = None
+        self.score = 0
+        self.time_step = 0
+        my_dpi = 100
+        self.fig, self.ax = plt.subplots(
+            figsize=(self.width / my_dpi, self.height / my_dpi), dpi=my_dpi
+        )
+
+    def observe(self) -> np.ndarray:
+        obs = np.array(
+            [
+                self.go_cue[self.time_step],
+                self.stop_cue[self.time_step],
+                self.amplitude / np.max(self.amplitudes),
+                self.frequency / np.max(self.frequencies),
+                self.phase / np.max(self.phases),
+            ],
+            dtype=np.float32,
+        )
+        return obs
+
+    def generate_target(self):
+
+        target = np.zeros(self.episode_length)
+        go_cue = np.zeros(self.episode_length)
+        stop_cue = np.zeros(self.episode_length)
+
+        # get go and stop cue times
+
+        go_time = np.random.randint(
+            int(self.go_bounds[0] * self.episode_length),
+            int(self.go_bounds[1] * self.episode_length),
+        )
+
+        go_cue[go_time - 5 : go_time + 5] = 1
+        go_cue = gaussian_filter1d(go_cue, sigma=5)
+        go_cue /= go_cue.std()
+
+        stop_time = np.random.randint(
+            int(self.stop_bounds[0] * self.episode_length),
+            int(self.stop_bounds[1] * self.episode_length),
+        )
+
+        stop_cue[stop_time - 5 : stop_time + 5] = 1
+        stop_cue = gaussian_filter1d(stop_cue, sigma=5)
+        stop_cue /= stop_cue.std()
+
+        # get sine parameters
+        amplitude = np.random.choice(self.amplitudes)
+        frequency = np.random.choice(self.frequencies)
+        phase = np.random.choice(self.phases)
+
+        times = np.arange(self.episode_length - go_time) * self.step_size
+
+        target[go_time:] = amplitude * np.sin(frequency * np.pi * (times + phase))
+        target[stop_time:] = 0
+        self.target_position = target
+        self.stop_cue = stop_cue
+        self.go_cue = go_cue
+
+    def generate_agent(self):
+        self.agent_pos = 0
+
+    def act(self, action):
+        self.time_step += 1
+        if self.done:
+            self.reset()
+        else:
+            self.agent_pos = action
+        self.agent_tracker.append(self.agent_pos)
+        self.is_done()
+
+    def evaluate(self):
+        error = (self.agent_pos - self.target_position[self.time_step]) ** 2
+        reward = np.exp(-1 * (error / self.tolerance) ** 2)
+        self.reward = reward / self.episode_length
+        self.score += self.reward
+        return reward
+
+    def is_done(self):
+        if self.time_step >= self.episode_length - 1:
+            self.done = True
+        return self.done
+
+    def reset(self):
+        self.target_position = None
+        self.go_cue = None
+        self.stop_cue = None
+        self.agent_pos = None
+        self.agent_tracker = []
+        self.amplitude = None
+        self.phase = None
+        self.frequency = None
+        self.done = False
+        self.reward = None
+        self.score = 0
+        self.time_step = 0
+
+        self.generate_target()
+        self.generate_agent()
+
+    def view(self):
+        # Draw target and agent icons
+        self.ax.cla()
+        times = np.arange(self.episode_length) * self.step_size
+        self.ax.plot(
+            times, self.target_position, label="Target", ls="--", lw=2, color="k"
+        )
+        self.ax.plot(
+            times[: len(self.agent_tracker)],
+            self.agent_tracker,
+            label="Agent Location",
+        )
+        self.ax.plot(times, self.go_cue, label="Start Cue", color="g")
+        self.ax.plot(times, self.stop_cue, label="Stop Cue", color="r")
+        self.ax.legend()
+        self.ax.set_xlabel("Time (s)")
+        self.ax.set_ylabel("AU")
+        # self.display.fill((67, 70, 75))
+
+        canvas = agg.FigureCanvasAgg(self.fig)
+        canvas.draw()
+        renderer = canvas.get_renderer()
+        raw_data = renderer.tostring_rgb()
+        size = canvas.get_width_height()
+        surf = pygame.image.fromstring(raw_data, size, "RGB")
+        self.display.blit(surf, (0, 0))
+
+        img = self.font.render(f"{self.score: 0.2f}", True, (57, 60, 65))
+
+        self.display.blit(
+            img, img.get_rect(center=(20 * 15 + 15, 15 * 15 + 15)).topleft
+        )
+        pygame.display.flip()
+
+    def get_info(
+        self,
+    ) -> Dict:
+        info = {"r": self.reward}
+        return info
+
+    def run(self) -> None:
+        self.running = True
+
+        while self.running:
+            action = np.random.randn()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    break
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        self.running = False
+                        break
+            self.act(action)
+            self.evaluate()
+            self.view()  # update display surface
+        self.close()
