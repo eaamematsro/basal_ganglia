@@ -367,9 +367,9 @@ class SineGeneration(PyGame):
             [
                 self.go_cue[self.time_step],
                 self.stop_cue[self.time_step],
-                self.amplitude / np.max(self.amplitudes),
-                self.frequency / np.max(self.frequencies),
-                self.phase / np.max(self.phases),
+                self.amplitude / np.max(np.abs(self.amplitudes)),
+                self.frequency / np.max(np.abs(self.frequencies)),
+                self.phase / np.max(np.abs(self.phases)),
             ],
             dtype=np.float32,
         )
