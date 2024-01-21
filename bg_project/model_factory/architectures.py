@@ -12,6 +12,7 @@ import torch.nn as nn
 from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
+from typing_extensions import override
 from torch.distributions.multivariate_normal import MultivariateNormal
 from model_factory.factory_utils import torchify
 from .networks import (
@@ -37,6 +38,7 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         self.text_path = None
         self.folder_path = None
         self.task = task
+        self.tags = None
         self.output_names = None
         self.set_save_path()
         self.set_outputs()
@@ -84,12 +86,25 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
 
     def save_model(self, **kwargs):
         self.folder_path.mkdir(exist_ok=True)
-        data_dict = {"network": self, **kwargs}
+        data_dict = {"network": self, "tags": self.tags, **kwargs}
         with open(self.save_path, "wb") as handle:
             pickle.dump(data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         with open(self.text_path, "w") as f:
             json.dump(self.params, f)
+
+    def swap_grad_state(
+        self, grad_state: bool = True, params_to_swap: Optional[list] = None
+    ):
+        if params_to_swap is None:
+            params_to_swap = self.parameters()
+
+        for param_group in params_to_swap:
+            if isinstance(param_group, torch.nn.parameter.Parameter):
+                param_group.requires_grad = grad_state
+            else:
+                for param in param_group.parameters():
+                    param.requires_grad = grad_state
 
 
 class VanillaRNN(BaseArchitecture):
@@ -436,18 +451,6 @@ class RNNGMM(BaseArchitecture):
         """"""
         print("An RNN who's weights are multiplied by a static gain from the BG")
 
-    def swap_grad_state(
-        self, grad_state: bool = True, params_to_swap: Optional[list] = None
-    ):
-        if params_to_swap is None:
-            params_to_swap = [self.rnn.U, self.rnn.V, self.bg, self.classifier]
-        for param_group in params_to_swap:
-            if isinstance(param_group, torch.nn.parameter.Parameter):
-                param_group.requires_grad = grad_state
-            else:
-                for param in param_group.parameters():
-                    param.requires_grad = grad_state
-
     def get_input_stats(
         self,
         classifier_input: torch.Tensor,
@@ -689,13 +692,16 @@ class PallidalRNN(BaseArchitecture, ABC):
         input_sources: Optional[Dict[str, Tuple[int, bool]]] = None,
         dt: float = 0.05,
         tau: float = 0.15,
+        tags: List[str] = None,
         **kwargs,
     ):
         super(PallidalRNN, self).__init__(**kwargs)
+        self.tags = tags
         self.params = {
             "n_hidden": nneurons,
             "inputs": input_sources,
             "network": type(self).__name__,
+            "tags": self.tags,
         }
         self.rnn = BGRNN(
             nneurons=nneurons,

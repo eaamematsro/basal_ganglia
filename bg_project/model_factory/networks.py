@@ -853,7 +853,7 @@ class BGRNN(RNN):
 
         U_mat = np.random.randn(nthalamic, nneurons) / np.sqrt(nthalamic)
         V_mat = np.random.randn(nneurons, nthalamic) / np.sqrt(nneurons)
-        Wb = 0.1 * np.random.randn(nneurons, nthalamic) / np.sqrt(nneurons)
+        Wb = np.random.randn(nneurons, nthalamic) / np.sqrt(nneurons)
         self.U = nn.Parameter(torchify(U_mat))
         self.Vt = nn.Parameter(torchify(V_mat))
         self.Wb = nn.Parameter(torchify(Wb))
@@ -877,7 +877,7 @@ class BGRNN(RNN):
         for input_name, input_value in inputs.items():
             # print(input_name, input_value.shape, self.I[input_name].shape)
             out += input_value @ self.I[input_name]
-        r_bg = self.th_nonlinearity(self.r @ (self.Vt + self.Wb))
+        r_bg = self.th_nonlinearity(self.r @ self.Wb)
         r_th = self.th_nonlinearity(self.r @ self.Vt - r_bg)
 
         x = torch.clip(
