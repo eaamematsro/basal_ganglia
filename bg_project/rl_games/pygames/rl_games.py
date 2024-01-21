@@ -320,11 +320,11 @@ class SineGeneration(PyGame):
         amplitudes: Sequence[float] = (1,),
         phases: Sequence[float] = (0,),
         frequencies: Sequence[float] = (1,),
-        go_bounds: Sequence[float] = (0.05, 0.15),
-        stop_bounds: Sequence[float] = (0.75, 0.85),
+        go_bounds: Sequence[float] = (0.15, 0.3),
+        stop_bounds: Sequence[float] = (0.65, 0.8),
         duration: int = 3,
         step_size: float = 0.01,
-        tolerance: float = 0.25,
+        tolerance: float = 0.5,
         **kwargs,
     ) -> None:
         super().__init__(title=type(self).__name__, **kwargs)
@@ -361,15 +361,17 @@ class SineGeneration(PyGame):
         self.fig, self.ax = plt.subplots(
             figsize=(self.width / my_dpi, self.height / my_dpi), dpi=my_dpi
         )
+        self.reset()
 
     def observe(self) -> np.ndarray:
+
         obs = np.array(
             [
                 self.go_cue[self.time_step],
                 self.stop_cue[self.time_step],
                 self.amplitude / np.max(np.abs(self.amplitudes)),
                 self.frequency / np.max(np.abs(self.frequencies)),
-                self.phase / np.max(np.abs(self.phases)),
+                self.phase / np.maximum(np.max(np.abs(self.phases)), 1),
             ],
             dtype=np.float32,
         )
@@ -413,6 +415,9 @@ class SineGeneration(PyGame):
         self.target_position = target
         self.stop_cue = stop_cue
         self.go_cue = go_cue
+        self.amplitude = amplitude
+        self.frequency = frequency
+        self.phase = phase
 
     def generate_agent(self):
         self.agent_pos = 0
@@ -429,8 +434,14 @@ class SineGeneration(PyGame):
     def evaluate(self):
         error = (self.agent_pos - self.target_position[self.time_step]) ** 2
         reward = np.exp(-1 * (error / self.tolerance) ** 2)
-        self.reward = reward / self.episode_length
+
+        if type(reward) is float:
+            self.reward = reward / self.episode_length
+        else:
+            self.reward = reward[0] / self.episode_length
+
         self.score += self.reward
+
         return reward
 
     def is_done(self):
@@ -481,13 +492,12 @@ class SineGeneration(PyGame):
         size = canvas.get_width_height()
         surf = pygame.image.fromstring(raw_data, size, "RGB")
         self.display.blit(surf, (0, 0))
-
         img = self.font.render(f"{self.score: 0.2f}", True, (57, 60, 65))
 
         self.display.blit(
             img, img.get_rect(center=(20 * 15 + 15, 15 * 15 + 15)).topleft
         )
-        pygame.display.flip()
+        # pygame.display.flip()
 
     def get_info(
         self,
