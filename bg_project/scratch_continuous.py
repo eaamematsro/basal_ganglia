@@ -2,18 +2,14 @@ import argparse
 import os.path
 import pdb
 
-import numpy as np
 import gymnasium
 import wandb
 import time
-import matplotlib.pyplot as plt
 
-from rl_games.optimization import PPO
+from rl_games.optimization import ContinuousPPO
+from eaa_rl_algorithms.models.algorithms.algorithms import PPO
 from torch.utils.tensorboard import SummaryWriter
 from distutils.util import strtobool
-from rl_games.pygames.rl_games import MultiWorldGridWorld
-
-from rl_games.envs.grid_worlds import GridWorldEnv
 
 
 def parse_args():
@@ -28,11 +24,11 @@ def parse_args():
     parser.add_argument(
         "--gym-id",
         type=str,
-        default="CartPole-v1",
+        default="GridWorld-v0",
         help="The name of the gym environment",
     )
     parser.add_argument(
-        "--actor-lr", type=float, default=2.5e-4, help="Learning of the actor network"
+        "--actor-lr", type=float, default=1e-3, help="Learning of the actor network"
     )
     parser.add_argument(
         "--critic-lr", type=float, default=1e-3, help="Learning of the critic network"
@@ -45,7 +41,13 @@ def parse_args():
         help="Lambda coefficient for generalized advantage function.",
     )
     parser.add_argument(
-        "--num-envs", type=int, default=4, help="Number of parallel environments to run"
+        "--num-envs", type=int, default=1, help="Number of parallel environments to run"
+    )
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        default=2048,
+        help="Number of parallel environments to run",
     )
     parser.add_argument(
         "--seed",
@@ -56,17 +58,17 @@ def parse_args():
     parser.add_argument(
         "--num-mini-batches",
         type=int,
-        default=4,
+        default=32,
         help="Number of minibatches per rollout",
     )
     parser.add_argument(
         "--num-update-epochs",
         type=int,
-        default=4,
+        default=10,
         help="Number of gradient steps per rollout",
     )
     parser.add_argument(
-        "--alpha-entropy", type=float, default=0.95, help="Weight of entropy loss"
+        "--alpha-entropy", type=float, default=0, help="Weight of entropy loss"
     )
     parser.add_argument(
         "--clip-coeff", type=float, default=0.2, help="Clipping value for ppo objective"
@@ -80,7 +82,7 @@ def parse_args():
     parser.add_argument(
         "--total-time-steps",
         type=int,
-        default=25_000,
+        default=100_000,
         help="Total number of environment time steps",
     )
     parser.add_argument(
@@ -148,37 +150,55 @@ def make_env(gym_id):
     return thunk
 
 
+def objective(trial):
+    model = ContinuousPPO(
+        actor_lr=trial.suggest_float("actor_lr", 1e-5, 1e-1),
+        critic_lr=trial.suggest_float("critic_lr", 1e-5, 1e-1),
+        num_mini_batches=trial.suggest_int("num_mini_batches", 4, 64),
+        num_update_epochs=trial.suggest_int("num_update_epochs", 1, 20),
+        capture_videos=False,
+        gym_id="Pendulum-v1",
+        exp_name="tuning",
+        seed=1,
+        num_envs=1,
+        num_steps=1024,
+    )
+
+    model.learning()
+    final_reward = model.evaluate()
+    return final_reward
+
+
 if __name__ == "__main__":
-    env = gymnasium.make("GridWorld-v0")
-    pdb.set_trace()
-    # game = GridWorldEnv()
-    #
-    # for _ in range(1000):
-    #     action = np.random.randn(
-    #         2,
-    #     )
-    #     game.step(action)
-    #     game.render()
-    # args = parse_args()
-    # run_name = f"{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-    #
-    # if args.track:
-    #     wandb.init(
-    #         project=args.wandb_project_name,
-    #         entity=args.wandb_entity,
-    #         name=args.gym_id,
-    #         monitor_gym=True,
-    #         save_code=True,
-    #         sync_tensorboard=True,
-    #         config=vars(args),
-    #     )
-    #
-    # writer = SummaryWriter(f"runs/{run_name}")
-    # writer.add_text(
-    #     "Hyperparameters",
-    #     f"|param|value|\n|-|-\n%s"
-    #     % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-    # )
-    #
-    # model = PPO(writer, **vars(args))
-    # model.learning()
+
+    args = parse_args()
+    run_name = f"{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+
+    if args.track:
+        wandb.init(
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
+            name=args.gym_id,
+            monitor_gym=True,
+            save_code=True,
+            sync_tensorboard=True,
+            config=vars(args),
+        )
+
+    writer = SummaryWriter(f"runs/{run_name}")
+    writer.add_text(
+        "Hyperparameters",
+        f"|param|value|\n|-|-\n%s"
+        % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+    )
+
+    model = PPO(
+        summary_writer=writer,
+        action_space="continuous",
+        capture_videos=True,
+        **vars(args),
+    )
+    # study = optuna.create_study(direction="maximize")
+    # study.optimize(objective, n_trials=100)
+    # pdb.set_trace()
+    model.learning()

@@ -8,8 +8,10 @@ import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from model_factory.architectures import NETWORKS
-from typing import Optional, Any, Tuple
+from itertools import product
+from sklearn.decomposition import PCA
+from model_factory.architectures import NETWORKS, BaseArchitecture
+from typing import Optional, Any, Tuple, Callable
 from scipy.ndimage import gaussian_filter1d
 from model_factory.factory_utils import torchify
 from datetime import date
@@ -17,21 +19,72 @@ from pathlib import Path
 
 
 class Task(pl.LightningModule, metaclass=abc.ABCMeta):
-    def __init__(self, network: str, **kwargs):
+    def __init__(
+        self,
+        network: str,
+        lr: float = 1e-3,
+        wd: float = 0,
+        task: Optional[str] = None,
+        **kwargs,
+    ):
         super(Task, self).__init__()
-        self.network = NETWORKS[network](**kwargs)
+        self.network = NETWORKS[network](task=task, **kwargs)
         self.type = network
+        self.lr = lr
+        self.wd = wd
+        self.optimizer = None
+        self.lr_scheduler = None
+        self.network.test_loss = []
 
-    @abc.abstractmethod
     def configure_optimizers(self):
         """"""
+        self.optimizer = torch.optim.Adam(
+            self.network.parameters(), weight_decay=self.wd, lr=self.lr
+        )
+        # self.lr_scheduler = {
+        #     "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+        #         self.optimizer,
+        #     ),
+        #     "monitor": "val_loss",
+        #     "name": "lr_rate",
+        # }
+        self.lr_scheduler = {
+            "scheduler": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                self.optimizer, T_0=50, T_mult=2
+            ),
+        }
+        return [self.optimizer], [self.lr_scheduler]
+        # return self.optimizer
+
+    def add_noise_to_parameters(self, scale: float = 0.01):
+        """
+
+        Args:
+            scale:
+
+        Returns:
+
+        """
+        for param in self.parameters():
+            if param.requires_grad:
+                std = param.data.std()
+                param.data = param.data + scale * std * torch.randn_like(param.data)
 
     @abc.abstractmethod
     def compute_loss(self, **kwargs):
         """"""
 
     def save_model(self):
-        self.network.save_model()
+        # TODO: Save network should
+        self.network.save_model(task=self)
+
+    def count_parameters(self):
+        """Returns the number of trainable parameters in a model"""
+        running_count = 0
+        for param in self.network.parameters():
+            if param.requires_grad:
+                running_count += np.prod(param.shape)
+        return running_count
 
 
 class GenerateSine(Task):
@@ -271,13 +324,17 @@ class GenerateSinePL(Task):
         self,
         network: Optional[str] = "RNNFeedbackBG",
         nneurons: int = 150,
-        duration: int = 500,
+        duration: int = 300,
         nbg: int = 10,
+        n_context: int = 1,
+        provide_probs: bool = True,
         **kwargs,
     ):
 
-        kwargs["ncontext"] = 1
-        rnn_input_source = {"go": (1, True)}
+        rnn_input_source = {
+            "cues": (2, True),
+            "target_parameters": (2, True),
+        }
 
         super(GenerateSinePL, self).__init__(
             network=network,
@@ -285,17 +342,23 @@ class GenerateSinePL(Task):
             nbg=nbg,
             input_sources=rnn_input_source,
             include_bias=False,
+            bg_input_size=2,
+            task="SineGeneration",
             **kwargs,
         )
         self.save_hyperparameters()
         self.network.params.update({"task": "SineGeneration"})
+        self.network.params.update({"ncontexts": n_context})
         self.network.params.update(kwargs)
 
         self.network.Wout = nn.Parameter(
-            torchify(np.random.randn(nneurons, 1) / np.sqrt(nneurons))
+            torchify(np.random.randn(nneurons, 1) / np.sqrt(1))
         )
         self.duration = duration
+        self.ncontext = n_context
         self.dt = self.network.rnn.dt
+        self.train_loss = []
+        self.test_loss = []
         self.replay_buffer = None
         self.Pulses = None
         self.fixation = None
@@ -307,35 +370,101 @@ class GenerateSinePL(Task):
         self.new_targ_params = None
         self.optimizer = None
         self.configure_optimizers()
+        self.param_normalizers = None
+        self.cluster_labels = {}
         self.results_path = set_results_path(type(self).__name__)[-1]
 
-    def forward(
-        self,
-        go_cues: torch.Tensor,
-    ):
+        if self.ncontext == 1:
+            self.provide_probs = True
+        else:
+            self.provide_probs = provide_probs
 
-        if go_cues.ndim == 1:
-            go_cues = go_cues[:, None]
-        batch_size = go_cues.shape[1]
-        # pdb.set_trace()
+        if self.provide_probs & hasattr(self.network, "bg"):
+            self.network.swap_grad_state(
+                params_to_swap=[self.network.classifier], grad_state=False
+            )
+
+    def reset(self):
+        self.train_loss = []
+        self.test_loss = []
+
+    def forward(self, inputs: dict, return_clusters: bool = False, **kwargs):
+
+        cues = inputs["cues"]
+        parameters = inputs["parameters"]
+        batch_size = cues.shape[0]
         position_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
         )
-        context_input = torch.ones((batch_size, 1), device=self.network.Wout.device)
-        bg_inputs = {"context": context_input}
+        cluster_ids = torch.zeros(
+            self.duration, batch_size, device=self.network.Wout.device
+        )
+
+        if hasattr(self.network, "bg"):
+            if self.provide_probs:
+                if self.ncontext == 1:
+                    cluster_probs = torch.zeros(
+                        (batch_size, self.network.bg.nclusters),
+                        device=self.network.Wout.device,
+                    )
+                    cluster_probs[:, 0] = 1
+                    bg_inputs = {"cluster_probs": cluster_probs}
+                else:
+                    parameters_amp = np.unique(parameters.cpu()[:, 0, 0])
+                    parameters_freq = np.unique(parameters.cpu()[:, 1, 0])
+                    tuples = [
+                        (round(amp, 4), round(freq, 4))
+                        for amp, freq in product(parameters_amp, parameters_freq)
+                    ]
+                    cluster_keys = list(self.cluster_labels.keys())
+                    [
+                        self.cluster_labels.update({tup: len(self.cluster_labels)})
+                        for tup in tuples
+                        if tup not in cluster_keys
+                    ]
+
+                    cluster_probs = torch.zeros(
+                        (batch_size, self.network.bg.nclusters),
+                        device=self.network.Wout.device,
+                    )
+
+                    for batch in range(batch_size):
+                        batch_tup = (
+                            round(parameters.cpu().numpy()[batch, 0, 0], 4),
+                            round(parameters.cpu().numpy()[batch, 1, 0], 4),
+                        )
+                        cluster_probs[batch, self.cluster_labels[batch_tup]] = 1
+                    bg_inputs = {"cluster_probs": cluster_probs}
+            else:
+                bg_inputs = {}
+        else:
+            bg_inputs = {}
         self.network.rnn.reset_state(batch_size)
 
         for ti in range(self.duration):
-            rnn_input = {"go": go_cues[ti][:, None]}
-            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
+            bg_inputs.update({"context": parameters[:, :, ti]})
+            rnn_input = {
+                "cues": cues[:, :, ti],
+                "target_parameters": parameters[:, :, ti],
+            }
+            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
             position_store[ti] = outputs["r_act"] @ self.network.Wout
+            outuput_keys = outputs.keys()
 
-        return position_store
+            if "cluster_probs" in outuput_keys:
+                cluster_ids[ti] = torch.argmax(outputs["cluster_probs"], dim=1)
+            else:
+                cluster_ids = None
 
-    def configure_optimizers(self):
-        """"""
-        self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
-        return self.optimizer
+        if return_clusters:
+            return position_store, cluster_ids
+        else:
+            return position_store
+
+    # def configure_optimizers(self):
+    #     """"""
+    #     self.optimizer = torch.optim.Adam(self.network.parameters(), weight_decay=1e-3)
+    #     return self.optimizer
 
     def _log_loss(self, result_dict, stage: str) -> None:
         for k, v in result_dict.items():
@@ -355,9 +484,11 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs)
+        loss = torch.log(((positions.squeeze() - y.T) ** 2).sum(dim=0).mean() + 1)
+        self.train_loss.append(loss.detach().cpu().numpy())
         self.log(
             "train_loss",
             loss,
@@ -372,9 +503,11 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs, noise_scale=0)
+        loss = torch.log(((positions.squeeze() - y.T) ** 2).sum(dim=0).mean() + 1)
+        self.test_loss.append(loss.detach().cpu().numpy())
         self.log(
             "val_loss",
             loss,
@@ -390,9 +523,12 @@ class GenerateSinePL(Task):
         """
         Update and log beta, compute losses, and log them
         """
-        x, y = batch
-        positions = self.forward(x.T)
-        loss = nn.functional.mse_loss(positions.squeeze(), y.T)
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        positions = self.forward(inputs)
+        loss = torch.log(
+            ((positions.squeeze() - y.squeeze().T) ** 2).sum(dim=0).mean() + 1
+        )
         self.log(
             "test_loss",
             loss,
@@ -405,17 +541,136 @@ class GenerateSinePL(Task):
         self.log("hp_metric", loss, sync_dist=True)
         return loss
 
+    def evaluate_training(self, batch, original_network: Optional[Task] = None):
+        (timing_cues, contexts), y = batch
+        inputs = {"cues": timing_cues, "parameters": contexts}
+        with torch.no_grad():
+            positions, cluster_labels = self.forward(
+                inputs, return_clusters=True, noise_scale=0
+            )
+
+        targets = y.detach().cpu().numpy()
+        outputs = positions.squeeze().detach().cpu().numpy().T
+        timing_cues = timing_cues.detach().cpu().numpy()
+
+        plt.figure()
+        fig, ax = plt.subplots(1, sharex="col")
+        ax.plot(timing_cues[0, 0], label="Go Cue", ls="--", color="green")
+        ax.plot(timing_cues[0, 1], label="Stop Cue", ls="--", color="red")
+        ax.plot(targets[0], label="Target")
+        ax.plot(outputs[0], label="Trained Model Output")
+        # ax[1].plot(cluster_labels[:, 0])
+        # ax[1].set_ylim([0, cluster_labels.max()])
+        plt.legend()
+        plt.pause(0.01)
+
+    def get_cluster_means(
+        self,
+    ):
+
+        context_keys = list(self.cluster_labels.keys())
+        tuples = [
+            (amp / self.param_normalizers[0], freq / self.param_normalizers[1])
+            for (amp, freq) in context_keys
+        ]
+        n_contexts = len(tuples)
+        parameters = np.zeros((n_contexts, 2))
+        for idx, (amplitude, frequency) in enumerate(tuples):
+            parameters[idx] = np.array(
+                [
+                    amplitude * self.param_normalizers[0],
+                    frequency * self.param_normalizers[1],
+                ]
+            )
+        parameters = torchify(parameters).to(self.device)
+        # tuples = [
+        #     (round(amp, 4), round(freq, 4))
+        #     for amp, freq in product(parameters_amp, parameters_freq)
+        # ]
+
+        cluster_probs = torch.zeros(
+            (n_contexts, self.network.bg.nclusters),
+            device=self.network.Wout.device,
+        )
+
+        for batch in range(n_contexts):
+            batch_tup = (
+                round(parameters.cpu().numpy()[batch, 0], 4),
+                round(parameters.cpu().numpy()[batch, 1], 4),
+            )
+            try:
+                cluster_probs[batch, self.cluster_labels[batch_tup]] = 1
+            except KeyError:
+                print(f"{batch_tup} not in keys")
+
+        cluster_ids, cluster_means = self.network.get_input_stats(
+            parameters, cluster_probs=cluster_probs
+        )
+        unnormalized_params = parameters.clone()
+        for i, norm in enumerate(self.param_normalizers):
+            unnormalized_params[:, i] /= norm
+        return (
+            unnormalized_params.cpu().numpy(),
+            cluster_ids.cpu().numpy(),
+            cluster_means.cpu().numpy(),
+        )
+
+    def evaluate_network_clusters(self, go_cues: torch.Tensor):
+        n_clusters = self.network.bg.nclusters
+
+        parameters = torch.zeros((n_clusters, 2), device=self.network.Wout.device)
+        cluster_probs = torch.zeros(
+            (n_clusters, n_clusters), device=self.network.Wout.device
+        )
+        for key, value in self.cluster_labels.items():
+            parameters[value] = torch.from_numpy(np.asarray(key))
+            cluster_probs[value, value] = 1
+        duration = go_cues.shape[-1]
+        go_cues = go_cues[:n_clusters].to(self.network.Wout.device)
+        position_store = torch.zeros(
+            duration, n_clusters, 1, device=self.network.Wout.device
+        )
+        activity_store = torch.zeros(
+            duration,
+            n_clusters,
+            self.network.rnn.J.shape[0],
+            device=self.network.Wout.device,
+        )
+
+        hidden_units_store = torch.zeros_like(activity_store)
+        bg_inputs = {"cluster_probs": cluster_probs}
+        self.network.rnn.reset_state(n_clusters)
+        with torch.no_grad():
+            for time in range(duration):
+                rnn_input = {
+                    "cues": torch.tile(go_cues[0, :, time], dims=(n_clusters, 1)),
+                    "target_parameters": parameters,
+                }
+                outputs = self.network(
+                    bg_inputs=bg_inputs, rnn_inputs=rnn_input, noise_scale=0
+                )
+
+                position_store[time] = outputs["r_act"] @ self.network.Wout
+                activity_store[time] = outputs["r_act"]
+                hidden_units_store[time] = outputs["r_hidden"]
+
+        return (
+            position_store.squeeze().cpu().numpy(),
+            activity_store.squeeze().cpu().numpy(),
+            hidden_units_store.squeeze().cpu().numpy(),
+        )
+
 
 class MultiGainPacMan(Task):
     def __init__(
         self,
         network: Optional[str] = "RNNFeedbackBG",
-        nneurons: int = 250,
+        number_of_neurons: int = 250,
         duration: int = 150,
         nbg: int = 10,
         ncontext: int = 3,
         apply_energy_penalty: Optional[Tuple[str, ...]] = None,
-        energy_penalty: float = 1e-3,
+        energy_penalty: float = 1e-2,
         output_weight_penalty: float = 1e-3,
         **kwargs,
     ):
@@ -423,23 +678,27 @@ class MultiGainPacMan(Task):
             apply_energy_penalty = ()
 
         kwargs["ncontext"] = ncontext
-        rnn_input_source = {"displacement": (1, True)}
+        rnn_input_source = {
+            "current_height": (1, True),
+            "target_derivative": (1, True),
+            "target_height": (1, True),
+        }
 
         super(MultiGainPacMan, self).__init__(
             network=network,
-            nneurons=nneurons,
+            nneurons=number_of_neurons,
             nbg=nbg,
             input_sources=rnn_input_source,
-            include_bias=False,
+            include_bias=True,
+            task="MultiGainPacMan",
             **kwargs,
         )
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["original_model"])
         self.network.params.update({"task": "MultiGainPacMan"})
         self.network.params.update(kwargs)
-
         self.network.Wout = nn.Parameter(
-            torchify(np.random.randn(nneurons, 1) / np.sqrt(1))
+            torchify(np.random.randn(number_of_neurons, 1) / np.sqrt(1))
         )
         self.penalize_activity = apply_energy_penalty
         self.duration = duration
@@ -448,13 +707,12 @@ class MultiGainPacMan(Task):
         self.energy_penalty = energy_penalty
         self.output_weight_penalty = output_weight_penalty
 
-    def configure_optimizers(self):
-        """"""
-        self.optimizer = torch.optim.Adam(self.network.parameters())
-        return self.optimizer
-
     def forward(
-        self, contexts: torch.Tensor, targets: torch.Tensor, max_pos: float = 10
+        self,
+        contexts: torch.Tensor,
+        targets: torch.Tensor,
+        max_pos: float = 10,
+        **kwargs,
     ) -> Any:
         """"""
         if contexts.ndim == 1:
@@ -462,9 +720,17 @@ class MultiGainPacMan(Task):
         batch_size = contexts.shape[1]
 
         position_store = torch.zeros(
+            self.duration,
+            batch_size,
+            1,
+            device=self.network.Wout.device,
+            requires_grad=False,
+        )
+        force_store = torch.zeros(
             self.duration, batch_size, 1, device=self.network.Wout.device
         )
-        position = torch.zeros(batch_size, 1, device=self.network.Wout.device)
+        # position = torch.zeros(batch_size, 1, device=self.network.Wout.device)
+        position = targets[0].unsqueeze(1)
         velocity = torch.zeros(batch_size, 1, device=self.network.Wout.device)
         bg_inputs = {"context": contexts.T}
         self.network.rnn.reset_state(batch_size)
@@ -472,19 +738,30 @@ class MultiGainPacMan(Task):
         [energies.update({key: None}) for key in self.penalize_activity]
 
         for ti in range(self.duration):
+
             rnn_input = {
-                "displacement": torch.clip((targets[ti] - position_store[ti - 1].squeeze())[
-                    :, None
-                ], -max_pos, max_pos)
+                "current_height": position_store[ti - 1].clone(),
+                "target_derivative": ((targets[ti] - targets[ti - 1]))[:, None],
+                "target_height": targets[ti][:, None],
             }
-            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input)
-            acceleration = (
-                (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
-                - velocity * contexts[1][:, None]
-            ) / (contexts[0][:, None])
-            velocity = velocity + self.dt * acceleration
-            position_store[ti] = (
-                position + self.dt * velocity
+            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
+            force_store[ti] = torch.clamp(
+                outputs["r_act"] @ self.network.Wout, -1e4, 1e4
+            )
+            # acceleration = (
+            #     (outputs["r_act"] @ self.network.Wout) * (contexts[2])[:, None]
+            #     - velocity * contexts[1][:, None]
+            # ) / (contexts[0][:, None])
+
+            acceleration = (outputs["r_act"] @ self.network.Wout) / contexts[
+                0
+            ].unsqueeze(1) - contexts[1].unsqueeze(1) * velocity
+            velocity = velocity + self.dt / self.network.rnn.tau * acceleration
+            position_store[ti] = torch.clip(
+                position
+                + self.dt / self.network.rnn.tau * contexts[2].unsqueeze(1) * velocity,
+                -max_pos,
+                max_pos,
             )
             for key in self.penalize_activity:
                 if energies[key] is None:
@@ -493,22 +770,38 @@ class MultiGainPacMan(Task):
                     )
                 energies[key][ti] = outputs[key]
 
-        return position_store, energies
+        return position_store, force_store, energies
 
     def compute_loss(
-        self, target: torch.Tensor, model_output: torch.Tensor, network_energy: dict
+        self,
+        target: torch.Tensor,
+        model_output: torch.Tensor,
+        network_energy: Optional[dict] = None,
+        optimal_forces: Optional[torch.Tensor] = None,
+        use_optimal: bool = False,
     ) -> dict:
-        # pdb.set_trace()
-        trajectory_loss = torch.log(torch.pow(model_output - target, 2).sum(axis=0)).mean()
+        if optimal_forces is None:
+            use_optimal = False
+        if use_optimal:
+            trajectory_loss = torch.log(
+                ((optimal_forces - model_output[:-1].squeeze()) ** 2).sum(axis=0) ** 1
+                / 2
+                + 1
+            ).mean()
+        else:
+            trajectory_loss = torch.log(
+                torch.pow(model_output - target, 2).sum(axis=0) ** 1 / 2 + 1
+            ).mean()
         # trajectory_loss = nn.functional.mse_loss(model_output.T, target.T)
         output_weight_loss = self.output_weight_penalty * torch.linalg.norm(
             self.network.Wout
         )
         energy_loss = 0
-        for key in self.penalize_activity:
-            energy_loss = (
-                energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
-            )
+        if network_energy is not None:
+            for key in self.penalize_activity:
+                energy_loss = (
+                    energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
+                )
         total_loss = (
             trajectory_loss + self.energy_penalty * energy_loss + output_weight_loss
         )
@@ -518,16 +811,58 @@ class MultiGainPacMan(Task):
             "output_weight": output_weight_loss,
             "total": total_loss,
         }
+        if torch.isnan(total_loss) or torch.isinf(total_loss):
+            pdb.set_trace()
+            loss = {
+                "energy": None,
+                "trajectory": None,
+                "output_weight": None,
+                "total": None,
+            }
         return loss
+
+    def get_optimal_forces(
+        self,
+        targets,
+        contexts,
+        positions,
+    ):
+        velocities = torch.diff(positions.squeeze(), dim=0)
+        errors = (targets - positions.squeeze())[:-1]
+        optimal_force = (
+            contexts[0]
+            * self.network.rnn.tau
+            / self.dt
+            * (
+                errors / (contexts[2] * self.dt / self.network.rnn.tau)
+                - (1 - self.dt / self.network.rnn.tau * contexts[1]) * velocities
+            )
+        )
+        return optimal_force
 
     def training_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
+        # self.add_noise_to_parameters()
         x, y = batch
-        positions, energies = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T, positions.squeeze(), energies)
+        positions, forces, energies = self.forward(x.T, y.T, noise_scale=0.25)
+        optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
+        loss = self.compute_loss(
+            y.T,
+            forces.squeeze(),
+            energies,
+            optimal_forces=optimal_paths,
+        )
         self.log(
             "train_loss",
             loss["total"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        self.log(
+            "energy_loss",
+            loss["energy"],
             prog_bar=True,
             on_epoch=True,
             on_step=False,
@@ -538,8 +873,14 @@ class MultiGainPacMan(Task):
     def validation_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
-        positions, energies = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T, positions.squeeze(), energies)
+        positions, forces, energies = self.forward(x.T, y.T, noise_scale=0)
+        optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
+        loss = self.compute_loss(
+            y.T,
+            forces.squeeze(),
+            energies,
+            optimal_forces=optimal_paths,
+        )
         self.log(
             "val_loss",
             loss["total"],
@@ -554,8 +895,20 @@ class MultiGainPacMan(Task):
     def test_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
 
         x, y = batch
-        positions, energies = self.forward(x.T, y.T)
-        loss = self.compute_loss(y.T.squeeze(), positions.squeeze(), energies)
+        positions, forces, energies = self.forward(x.T, y.T, noise_scale=0)
+        optimal_paths = self.get_optimal_forces(y.T.squeeze(), x.T, positions)
+        # loss = self.compute_loss(
+        #     y.T,
+        #     forces.T,
+        #     energies,
+        #     optimal_forces=optimal_paths,
+        # )
+        loss = self.compute_loss(
+            y.T.squeeze(),
+            forces.squeeze(),
+            energies,
+            optimal_forces=optimal_paths,
+        )
         self.log(
             "test_loss",
             loss["total"],
@@ -566,19 +919,75 @@ class MultiGainPacMan(Task):
         )
         self.log("hp/metric_2", loss["trajectory"], sync_dist=True)
         self.log("hp_metric", loss["trajectory"], sync_dist=True)
+        self.network.test_loss.append(loss["trajectory"].cpu().numpy())
         return loss["total"]
 
-    def evaluate_training(self, batch):
+    def evaluate_training(
+        self, batch, original_network: Optional[Task] = None, noise_scale: float = 0.5
+    ):
         x, y = batch
+        self.duration = y.shape[1]
         with torch.no_grad():
-            positions, energies = self.forward(x.T, y.T)
+            positions, _, energies = self.forward(x.T, y.T, noise_scale=noise_scale)
+            if hasattr(self.network, "bg"):
+                bg_outputs = self.network.bg.detach()  # (x)
+            if original_network is not None:
+                positions_initial, _, _ = original_network(
+                    x.T, y.T, noise_scale=noise_scale
+                )
+                outputs_initial = positions_initial.squeeze().detach().cpu().numpy().T
+            else:
+                positions_initial = None
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
+        loss = ((targets - outputs) ** 2).mean()
         plt.figure()
-        plt.plot(targets[0], label='Target')
-        plt.plot(outputs[0], label='Model Output')
+        plt.plot(
+            np.arange(self.duration) * self.dt, targets[0], label="Target", ls="--"
+        )
+        plt.plot(
+            np.arange(self.duration) * self.dt, outputs[0], label="Trained Model Output"
+        )
+        if positions_initial is not None:
+            plt.plot(
+                np.arange(self.duration) * self.dt,
+                outputs_initial[0],
+                label="Original Model Output",
+                ls="--",
+            )
+        plt.xlabel("Time (s)")
+        plt.ylabel("Agent Height")
         plt.legend()
-        plt.pause(.1)
+
+        if hasattr(self.network, "bg"):
+            fig, ax = plt.subplots(1, 2, figsize=(12, 8))
+            ax[0].set_title("Contexts")
+            g = ax[0].imshow(x, aspect="auto")
+            plt.colorbar(g, ax=ax[0], label="Value")
+            ax[0].set_xlabel("Context")
+            ax[0].set_xticks(
+                ticks=range(3), labels=["Mass", "Viscositiy", "Polarity"], rotation=45
+            )
+            ax[0].set_ylabel("Trial")
+            ax[1].set_title("Basal Gangial Output")
+
+            g = ax[1].imshow(bg_outputs, aspect="auto")
+            plt.colorbar(g, ax=ax[1], label="Neural activity")
+            ax[1].set_xlabel("Neuron")
+            ax[1].set_ylabel("Trial")
+            plt.pause(0.1)
+            bg_pca = PCA().fit_transform(bg_outputs.detach().numpy())
+            min_vals, _ = x.min(axis=0)
+            new_x = x - min_vals
+            max_x, _ = new_x.max(axis=0)
+            normed_x = (new_x / max_x).detach().numpy()
+        # fig, ax = plt.subplots(1, 1, figsize=(12, 8), subplot_kw={"projection": "3d"})
+        # ax.scatter(bg_pca[:, 0], bg_pca[:, 1], bg_pca[:, 2], c=normed_x)
+        # ax.set_xlabel("PC1")
+        # ax.set_ylabel("PC2")
+        # ax.set_zlabel("PC3")
+        # plt.pause(0.1)
+        return loss
 
     def change_context(self, batch, new_context: Tuple = (1, 0, -1)):
 
@@ -586,15 +995,16 @@ class MultiGainPacMan(Task):
         x[:] = torchify(np.asarray(new_context))
 
         with torch.no_grad():
-            positions, energies = self.forward(x.T, y.T)
+            positions, _, energies = self.forward(x.T, y.T)
 
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
         plt.figure()
-        plt.plot(targets[0], label='Target')
-        plt.plot(outputs[0], label='Model Output')
+        plt.plot(targets[0], label="Target")
+        plt.plot(outputs[0], label="Model Output")
         plt.legend()
-        plt.pause(.1)
+        plt.pause(0.1)
+
 
 def set_results_path(task_name: str):
     cwd = os.getcwd()

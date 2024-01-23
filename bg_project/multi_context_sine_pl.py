@@ -38,10 +38,10 @@ if __name__ == "__main__":
     save_path = set_results_path(type(simple_model).__name__)[0]
 
     trainer = Trainer(
-        max_epochs=500,
+        max_epochs=200,
         gradient_clip_val=1,
         accelerator="gpu",
-        devices=4,
+        devices=1,
         default_root_dir=save_path,
     )
     trainer.fit(
@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     simple_model.save_model()
 
-    for nbg in [10, 25, 50]:
+    for nbg in [50]:
         thalamic_model = GenerateSinePL(network="RNNStaticBG", nbg=nbg)
 
         # Transfer and freeze weights from trained network's rnn module
@@ -62,7 +62,7 @@ if __name__ == "__main__":
         # thalamic_model.network.rnn.reconfigure_u_v()
 
         train_set, val_set, test_set = split_dataset(
-            SineDataset(frequency=2), (0.6, 0.2, 0.2)
+            SineDataset(amplitude=-1), (0.6, 0.2, 0.2)
         )
 
         train_loader = DataLoader(
@@ -81,7 +81,7 @@ if __name__ == "__main__":
             max_epochs=750,
             gradient_clip_val=1,
             accelerator="gpu",
-            devices=4,
+            devices=1,
             default_root_dir=save_path,
         )
         trainer.fit(
