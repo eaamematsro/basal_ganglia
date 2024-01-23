@@ -18,6 +18,31 @@ class VarianceTypes(Enum):
     Full = "full"
 
 
+class ReTanh(nn.Module):
+    r"""Applies the Hyperbolic Tangent (Tanh) function element-wise.
+
+    Tanh is defined as:
+
+    .. math::
+        \text{Tanh}(x) = \tanh(x) = \frac{\exp(x) - \exp(-x)} {\exp(x) + \exp(-x)}
+
+    Shape:
+        - Input: :math:`(*)`, where :math:`*` means any number of dimensions.
+        - Output: :math:`(*)`, same shape as the input.
+
+    .. image:: ../scripts/activation_images/Tanh.png
+
+    Examples::
+
+        >>> m = ReTanh()
+        >>> input = torch.randn(2)
+        >>> output = m(input)
+    """
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return torch.clamp_min(torch.tanh(input), 0)
+
+
 class Module(nn.Module, metaclass=abc.ABCMeta):
     def __init__(self):
         super(Module, self).__init__()
@@ -70,7 +95,7 @@ class RNN(Module):
             noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
 
         if non_linearity is None:
-            non_linearity = nn.Softplus()
+            non_linearity = ReTanh()
 
         self.nonlinearity = non_linearity
 
@@ -158,10 +183,10 @@ class ThalamicRNN(Module):
         super(ThalamicRNN, self).__init__()
 
         if non_linearity is None:
-            non_linearity = nn.Softplus()
+            non_linearity = ReTanh()
 
         if th_non_linearity is None:
-            th_non_linearity = nn.Softplus()
+            th_non_linearity = ReTanh()
 
         if bg_non_linearity is None:
             bg_non_linearity = nn.Sigmoid()
@@ -350,13 +375,13 @@ class InputRNN(Module):
         super(InputRNN, self).__init__()
 
         if non_linearity is None:
-            non_linearity = nn.Softplus()
+            non_linearity = ReTanh()
 
         if th_non_linearity is None:
-            th_non_linearity = nn.Softplus()
+            th_non_linearity = ReTanh()
 
         if bg_non_linearity is None:
-            bg_non_linearity = nn.Sigmoid()
+            bg_non_linearity = ReTanh()
 
         if noise_model is None:
             noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
@@ -824,10 +849,10 @@ class BGRNN(RNN):
             noise_model = GaussianNoise(sigma=np.sqrt(2 * dt / tau))
 
         if non_linearity is None:
-            non_linearity = nn.Softplus()
+            non_linearity = ReTanh()
 
         if th_non_linearity is None:
-            th_non_linearity = nn.Softplus()
+            th_non_linearity = ReTanh()
 
         self.nonlinearity = non_linearity
         self.th_nonlinearity = th_non_linearity

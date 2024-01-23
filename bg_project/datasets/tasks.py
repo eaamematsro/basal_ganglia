@@ -668,7 +668,7 @@ class MultiGainPacMan(Task):
         number_of_neurons: int = 250,
         duration: int = 150,
         nbg: int = 10,
-        ncontext: int = 3,
+        ncontext: int = 4,
         apply_energy_penalty: Optional[Tuple[str, ...]] = None,
         energy_penalty: float = 1e-2,
         output_weight_penalty: float = 1e-3,
@@ -744,7 +744,11 @@ class MultiGainPacMan(Task):
                 "target_derivative": ((targets[ti] - targets[ti - 1]))[:, None],
                 "target_height": targets[ti][:, None],
             }
-            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
+            outputs = self.network(
+                bg_inputs=bg_inputs,
+                rnn_inputs=rnn_input,
+                **kwargs,
+            )
             force_store[ti] = torch.clamp(
                 outputs["r_act"] @ self.network.Wout, -1e4, 1e4
             )
@@ -753,16 +757,20 @@ class MultiGainPacMan(Task):
             #     - velocity * contexts[1][:, None]
             # ) / (contexts[0][:, None])
 
-            acceleration = (outputs["r_act"] @ self.network.Wout) / contexts[
-                0
-            ].unsqueeze(1) - contexts[1].unsqueeze(1) * velocity
+            acceleration = (
+                (outputs["r_act"] @ self.network.Wout)
+                / contexts[0].unsqueeze(1)
+                * contexts[2].unsqueeze(1)
+                - contexts[1].unsqueeze(1) * velocity
+                - contexts[3].unsqueeze(1) * position
+            )
             velocity = velocity + self.dt / self.network.rnn.tau * acceleration
-            position_store[ti] = torch.clip(
-                position
-                + self.dt / self.network.rnn.tau * contexts[2].unsqueeze(1) * velocity,
+            position = torch.clip(
+                position + self.dt / self.network.rnn.tau * velocity,
                 -max_pos,
                 max_pos,
             )
+            position_store[ti] = position
             for key in self.penalize_activity:
                 if energies[key] is None:
                     energies[key] = torch.zeros(
@@ -848,7 +856,7 @@ class MultiGainPacMan(Task):
         optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
         loss = self.compute_loss(
             y.T,
-            forces.squeeze(),
+            positions.squeeze(),
             energies,
             optimal_forces=optimal_paths,
         )
@@ -877,7 +885,7 @@ class MultiGainPacMan(Task):
         optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
         loss = self.compute_loss(
             y.T,
-            forces.squeeze(),
+            positions.squeeze(),
             energies,
             optimal_forces=optimal_paths,
         )
@@ -905,7 +913,7 @@ class MultiGainPacMan(Task):
         # )
         loss = self.compute_loss(
             y.T.squeeze(),
-            forces.squeeze(),
+            positions.squeeze(),
             energies,
             optimal_forces=optimal_paths,
         )
@@ -923,12 +931,14 @@ class MultiGainPacMan(Task):
         return loss["total"]
 
     def evaluate_training(
-        self, batch, original_network: Optional[Task] = None, noise_scale: float = 0.5
+        self, batch, original_network: Optional[Task] = None, noise_scale: float = 0.05
     ):
         x, y = batch
         self.duration = y.shape[1]
         with torch.no_grad():
-            positions, _, energies = self.forward(x.T, y.T, noise_scale=noise_scale)
+            positions, forces, energies = self.forward(
+                x.T, y.T, noise_scale=noise_scale
+            )
             if hasattr(self.network, "bg"):
                 bg_outputs = self.network.bg.detach()  # (x)
             if original_network is not None:
@@ -940,7 +950,7 @@ class MultiGainPacMan(Task):
                 positions_initial = None
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
-        loss = ((targets - outputs) ** 2).mean()
+        loss = self.compute_loss(y.T, positions.squeeze())["trajectory"]
         plt.figure()
         plt.plot(
             np.arange(self.duration) * self.dt, targets[0], label="Target", ls="--"
