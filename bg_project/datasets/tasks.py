@@ -744,7 +744,11 @@ class MultiGainPacMan(Task):
                 "target_derivative": ((targets[ti] - targets[ti - 1]))[:, None],
                 "target_height": targets[ti][:, None],
             }
-            outputs = self.network(bg_inputs=bg_inputs, rnn_inputs=rnn_input, **kwargs)
+            outputs = self.network(
+                bg_inputs=bg_inputs,
+                rnn_inputs=rnn_input,
+                **kwargs,
+            )
             force_store[ti] = torch.clamp(
                 outputs["r_act"] @ self.network.Wout, -1e4, 1e4
             )
@@ -852,7 +856,7 @@ class MultiGainPacMan(Task):
         optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
         loss = self.compute_loss(
             y.T,
-            forces.squeeze(),
+            positions.squeeze(),
             energies,
             optimal_forces=optimal_paths,
         )
@@ -881,7 +885,7 @@ class MultiGainPacMan(Task):
         optimal_paths = self.get_optimal_forces(y.T, x.T, positions)
         loss = self.compute_loss(
             y.T,
-            forces.squeeze(),
+            positions.squeeze(),
             energies,
             optimal_forces=optimal_paths,
         )
@@ -909,7 +913,7 @@ class MultiGainPacMan(Task):
         # )
         loss = self.compute_loss(
             y.T.squeeze(),
-            forces.squeeze(),
+            positions.squeeze(),
             energies,
             optimal_forces=optimal_paths,
         )
@@ -927,12 +931,14 @@ class MultiGainPacMan(Task):
         return loss["total"]
 
     def evaluate_training(
-        self, batch, original_network: Optional[Task] = None, noise_scale: float = 0.5
+        self, batch, original_network: Optional[Task] = None, noise_scale: float = 0.05
     ):
         x, y = batch
         self.duration = y.shape[1]
         with torch.no_grad():
-            positions, _, energies = self.forward(x.T, y.T, noise_scale=noise_scale)
+            positions, forces, energies = self.forward(
+                x.T, y.T, noise_scale=noise_scale
+            )
             if hasattr(self.network, "bg"):
                 bg_outputs = self.network.bg.detach()  # (x)
             if original_network is not None:
@@ -944,7 +950,7 @@ class MultiGainPacMan(Task):
                 positions_initial = None
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
-        loss = ((targets - outputs) ** 2).mean()
+        loss = self.compute_loss(y.T, positions.squeeze())["trajectory"]
         plt.figure()
         plt.plot(
             np.arange(self.duration) * self.dt, targets[0], label="Target", ls="--"

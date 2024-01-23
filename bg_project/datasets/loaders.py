@@ -170,7 +170,7 @@ class PacmanDataset(Dataset):
             polarity = (1, -1)
 
         if spring_constant is None:
-            spring_constant = (1, 2)
+            spring_constant = (0.1, 0.5)
 
         sigma = sigma_fraction * trial_duration
         xs = np.expand_dims(np.linspace(0, trial_duration, trial_duration), 1)
