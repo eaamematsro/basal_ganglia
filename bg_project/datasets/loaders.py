@@ -145,6 +145,7 @@ class PacmanDataset(Dataset):
         masses: Optional[Sequence] = None,
         viscosity: Optional[Sequence] = None,
         polarity: Optional[Sequence] = None,
+            spring_constant: Optional[Sequence] = None
     ):
         """Instantiates target trajectories for pacman task
 
@@ -156,6 +157,7 @@ class PacmanDataset(Dataset):
             masses: Set of masses of dot. Must be greater than 0.
             viscosity: Set of environment viscosities. Must be nonnegative.
             polarity: Set of polarities to draw from. Must be -1 or 1
+            spring_constant: Set of possible spring constants to draw from. Must be nonnegative.
         """
         super(PacmanDataset, self).__init__()
         if masses is None:
@@ -167,19 +169,22 @@ class PacmanDataset(Dataset):
         if polarity is None:
             polarity = (1, -1)
 
+        if spring_constant is None:
+            spring_constant = (1, 2)
+
         sigma = sigma_fraction * trial_duration
         xs = np.expand_dims(np.linspace(0, trial_duration, trial_duration), 1)
         self.kernel = self.exponentiated_quadratic(xs, xs, sigma=sigma)
         targets = self.sample_gaussian_process(n_samples=n_samples)
 
-        n_entries = n_samples * len(polarity) * len(viscosity) * len(masses)
-        contexts = np.zeros((n_entries, 3))
+        n_entries = n_samples * len(polarity) * len(viscosity) * len(masses) * len(spring_constant)
+        contexts = np.zeros((n_entries, 4))
         out_targets = np.zeros((n_entries, trial_duration))
 
-        for idx, (mass, visc, polar, trajectory) in enumerate(
-            product(masses, viscosity, polarity, targets)
+        for idx, (mass, visc, polar, trajectory, spring_k) in enumerate(
+            product(masses, viscosity, polarity, targets, spring_constant)
         ):
-            contexts[idx] = np.asarray([mass, visc, polar])
+            contexts[idx] = np.asarray([mass, visc, polar, spring_k])
             out_targets[idx] = trajectory
 
         self.contexts: torch.Tensor = torchify(contexts).T
