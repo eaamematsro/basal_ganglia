@@ -357,6 +357,8 @@ class GenerateSinePL(Task):
         self.duration = duration
         self.ncontext = n_context
         self.dt = self.network.rnn.dt
+        self.train_loss = []
+        self.test_loss = []
         self.replay_buffer = None
         self.Pulses = None
         self.fixation = None
@@ -381,6 +383,10 @@ class GenerateSinePL(Task):
             self.network.swap_grad_state(
                 params_to_swap=[self.network.classifier], grad_state=False
             )
+
+    def reset(self):
+        self.train_loss = []
+        self.test_loss = []
 
     def forward(self, inputs: dict, return_clusters: bool = False, **kwargs):
 
@@ -482,6 +488,7 @@ class GenerateSinePL(Task):
         inputs = {"cues": timing_cues, "parameters": contexts}
         positions = self.forward(inputs)
         loss = torch.log(((positions.squeeze() - y.T) ** 2).sum(dim=0).mean() + 1)
+        self.train_loss.append(loss.detach().cpu().numpy())
         self.log(
             "train_loss",
             loss,
@@ -498,8 +505,9 @@ class GenerateSinePL(Task):
         """
         (timing_cues, contexts), y = batch
         inputs = {"cues": timing_cues, "parameters": contexts}
-        positions = self.forward(inputs)
+        positions = self.forward(inputs, noise_scale=0)
         loss = torch.log(((positions.squeeze() - y.T) ** 2).sum(dim=0).mean() + 1)
+        self.test_loss.append(loss.detach().cpu().numpy())
         self.log(
             "val_loss",
             loss,
@@ -537,23 +545,24 @@ class GenerateSinePL(Task):
         (timing_cues, contexts), y = batch
         inputs = {"cues": timing_cues, "parameters": contexts}
         with torch.no_grad():
-            positions, cluster_labels = self.forward(inputs, return_clusters=True)
+            positions, cluster_labels = self.forward(
+                inputs, return_clusters=True, noise_scale=0
+            )
 
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
         timing_cues = timing_cues.detach().cpu().numpy()
 
         plt.figure()
-        fig, ax = plt.subplots(2, sharex="col")
-        ax[0].plot(timing_cues[0, 0], label="Go Cue", ls="--", color="green")
-        ax[0].plot(timing_cues[0, 1], label="Stop Cue", ls="--", color="red")
-        ax[0].plot(targets[0], label="Target")
-        ax[0].plot(outputs[0], label="Trained Model Output")
-        ax[1].plot(cluster_labels[:, 0])
-        ax[1].set_ylim([0, cluster_labels.max()])
+        fig, ax = plt.subplots(1, sharex="col")
+        ax.plot(timing_cues[0, 0], label="Go Cue", ls="--", color="green")
+        ax.plot(timing_cues[0, 1], label="Stop Cue", ls="--", color="red")
+        ax.plot(targets[0], label="Target")
+        ax.plot(outputs[0], label="Trained Model Output")
+        # ax[1].plot(cluster_labels[:, 0])
+        # ax[1].set_ylim([0, cluster_labels.max()])
         plt.legend()
         plt.pause(0.01)
-        pdb.set_trace()
 
     def get_cluster_means(
         self,
@@ -913,50 +922,72 @@ class MultiGainPacMan(Task):
         self.network.test_loss.append(loss["trajectory"].cpu().numpy())
         return loss["total"]
 
-    def evaluate_training(self, batch, original_network: Optional[Task] = None):
+    def evaluate_training(
+        self, batch, original_network: Optional[Task] = None, noise_scale: float = 0.5
+    ):
         x, y = batch
+        self.duration = y.shape[1]
         with torch.no_grad():
-            positions, _, energies = self.forward(x.T, y.T, noise_scale=0)
-            bg_outputs = self.network.bg.detach()  # (x)
+            positions, _, energies = self.forward(x.T, y.T, noise_scale=noise_scale)
+            if hasattr(self.network, "bg"):
+                bg_outputs = self.network.bg.detach()  # (x)
             if original_network is not None:
-                positions_initial, _, _ = original_network(x.T, y.T, noise_scale=0)
+                positions_initial, _, _ = original_network(
+                    x.T, y.T, noise_scale=noise_scale
+                )
                 outputs_initial = positions_initial.squeeze().detach().cpu().numpy().T
             else:
                 positions_initial = None
         targets = y.detach().cpu().numpy()
         outputs = positions.squeeze().detach().cpu().numpy().T
+        loss = ((targets - outputs) ** 2).mean()
         plt.figure()
-        plt.plot(targets[0], label="Target")
-        plt.plot(outputs[0], label="Trained Model Output")
-        if positions_initial is not None:
-            plt.plot(outputs_initial[0], label="Original Model Output", ls="--")
-        plt.legend()
-        fig, ax = plt.subplots(1, 2, figsize=(12, 8))
-        ax[0].set_title("Contexts")
-        g = ax[0].imshow(x, aspect="auto")
-        plt.colorbar(g, ax=ax[0], label="Value")
-        ax[0].set_xlabel("Context")
-        ax[0].set_xticks(
-            ticks=range(3), labels=["Mass", "Viscositiy", "Polarity"], rotation=45
+        plt.plot(
+            np.arange(self.duration) * self.dt, targets[0], label="Target", ls="--"
         )
-        ax[0].set_ylabel("Trial")
-        ax[1].set_title("Basal Gangial Output")
-        g = ax[1].imshow(bg_outputs, aspect="auto")
-        plt.colorbar(g, ax=ax[1], label="Neural activity")
-        ax[1].set_xlabel("Neuron")
-        ax[1].set_ylabel("Trial")
-        plt.pause(0.1)
-        bg_pca = PCA().fit_transform(bg_outputs.detach().numpy())
-        min_vals, _ = x.min(axis=0)
-        new_x = x - min_vals
-        max_x, _ = new_x.max(axis=0)
-        normed_x = (new_x / max_x).detach().numpy()
+        plt.plot(
+            np.arange(self.duration) * self.dt, outputs[0], label="Trained Model Output"
+        )
+        if positions_initial is not None:
+            plt.plot(
+                np.arange(self.duration) * self.dt,
+                outputs_initial[0],
+                label="Original Model Output",
+                ls="--",
+            )
+        plt.xlabel("Time (s)")
+        plt.ylabel("Agent Height")
+        plt.legend()
+
+        if hasattr(self.network, "bg"):
+            fig, ax = plt.subplots(1, 2, figsize=(12, 8))
+            ax[0].set_title("Contexts")
+            g = ax[0].imshow(x, aspect="auto")
+            plt.colorbar(g, ax=ax[0], label="Value")
+            ax[0].set_xlabel("Context")
+            ax[0].set_xticks(
+                ticks=range(3), labels=["Mass", "Viscositiy", "Polarity"], rotation=45
+            )
+            ax[0].set_ylabel("Trial")
+            ax[1].set_title("Basal Gangial Output")
+
+            g = ax[1].imshow(bg_outputs, aspect="auto")
+            plt.colorbar(g, ax=ax[1], label="Neural activity")
+            ax[1].set_xlabel("Neuron")
+            ax[1].set_ylabel("Trial")
+            plt.pause(0.1)
+            bg_pca = PCA().fit_transform(bg_outputs.detach().numpy())
+            min_vals, _ = x.min(axis=0)
+            new_x = x - min_vals
+            max_x, _ = new_x.max(axis=0)
+            normed_x = (new_x / max_x).detach().numpy()
         # fig, ax = plt.subplots(1, 1, figsize=(12, 8), subplot_kw={"projection": "3d"})
         # ax.scatter(bg_pca[:, 0], bg_pca[:, 1], bg_pca[:, 2], c=normed_x)
         # ax.set_xlabel("PC1")
         # ax.set_ylabel("PC2")
         # ax.set_zlabel("PC3")
         # plt.pause(0.1)
+        return loss
 
     def change_context(self, batch, new_context: Tuple = (1, 0, -1)):
 
