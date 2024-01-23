@@ -668,7 +668,7 @@ class MultiGainPacMan(Task):
         number_of_neurons: int = 250,
         duration: int = 150,
         nbg: int = 10,
-        ncontext: int = 3,
+        ncontext: int = 4,
         apply_energy_penalty: Optional[Tuple[str, ...]] = None,
         energy_penalty: float = 1e-2,
         output_weight_penalty: float = 1e-3,
@@ -753,16 +753,20 @@ class MultiGainPacMan(Task):
             #     - velocity * contexts[1][:, None]
             # ) / (contexts[0][:, None])
 
-            acceleration = (outputs["r_act"] @ self.network.Wout) / contexts[
-                0
-            ].unsqueeze(1) - contexts[1].unsqueeze(1) * velocity
+            acceleration = (
+                (outputs["r_act"] @ self.network.Wout)
+                / contexts[0].unsqueeze(1)
+                * contexts[2].unsqueeze(1)
+                - contexts[1].unsqueeze(1) * velocity
+                - contexts[3].unsqueeze(1) * position
+            )
             velocity = velocity + self.dt / self.network.rnn.tau * acceleration
-            position_store[ti] = torch.clip(
-                position
-                + self.dt / self.network.rnn.tau * contexts[2].unsqueeze(1) * velocity,
+            position = torch.clip(
+                position + self.dt / self.network.rnn.tau * velocity,
                 -max_pos,
                 max_pos,
             )
+            position_store[ti] = position
             for key in self.penalize_activity:
                 if energies[key] is None:
                     energies[key] = torch.zeros(

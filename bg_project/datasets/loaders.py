@@ -145,7 +145,7 @@ class PacmanDataset(Dataset):
         masses: Optional[Sequence] = None,
         viscosity: Optional[Sequence] = None,
         polarity: Optional[Sequence] = None,
-            spring_constant: Optional[Sequence] = None
+        spring_constant: Optional[Sequence] = None,
     ):
         """Instantiates target trajectories for pacman task
 
@@ -177,7 +177,13 @@ class PacmanDataset(Dataset):
         self.kernel = self.exponentiated_quadratic(xs, xs, sigma=sigma)
         targets = self.sample_gaussian_process(n_samples=n_samples)
 
-        n_entries = n_samples * len(polarity) * len(viscosity) * len(masses) * len(spring_constant)
+        n_entries = (
+            n_samples
+            * len(polarity)
+            * len(viscosity)
+            * len(masses)
+            * len(spring_constant)
+        )
         contexts = np.zeros((n_entries, 4))
         out_targets = np.zeros((n_entries, trial_duration))
 
