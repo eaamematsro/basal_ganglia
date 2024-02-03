@@ -5,12 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="068be01d-770f-4bcd-8be5-cef8b961c4d1" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/bg_project/pacman/plot_results.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bg_project/eaa_rl_algorithms" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/eaa_rl_algorithms" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bg_project/pacman/multigain_pacman.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/pacman/multigain_pacman.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bg_project/pacman/scaling_laws.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/pacman/scaling_laws.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bg_project/pacman/plot_results.py" beforeDir="false" afterPath="$PROJECT_DIR$/bg_project/pacman/plot_results.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -140,7 +136,7 @@
       <workItem from="1697386897124" duration="5000" />
       <workItem from="1702646712799" duration="21334000" />
       <workItem from="1705707108291" duration="102142000" />
-      <workItem from="1706720705269" duration="2631000" />
+      <workItem from="1706720705269" duration="3990000" />
     </task>
     <servers />
   </component>

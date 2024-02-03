@@ -44,8 +44,13 @@ if __name__ == "__main__":
     g = sns.FacetGrid(
         row="learning_style", data=mean_pd.loc[mean_pd["spring_constant"] == 0.5]
     )
-    g.map(sns.scatterplot, x="mass", y="viscosity", data=mean_pd.loc[mean_pd["spring_constant"] == 0.5],
-          hue='loss')
+    g.map(
+        sns.scatterplot,
+        x="mass",
+        y="viscosity",
+        data=mean_pd.loc[mean_pd["spring_constant"] == 0.5],
+        hue="loss",
+    )
     plt.pause(0.1)
     learning_options = np.unique(mean_pd["learning_style"].tolist())
     n_opts = len(learning_options)
