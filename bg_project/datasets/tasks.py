@@ -1216,6 +1216,21 @@ class TwoChoiceDecision(Task):
         self.network.test_loss.append(loss["decision"].cpu().numpy())
         return loss["total"]
 
+    def calculate_psychometrics(self, samples: int = 100):
+        evidence = torchify(np.linspace(-1, 1)).unsqueeze(1)
+        choice = np.zeros((samples, evidence.shape[0]))
+
+        for sample in range(samples):
+            with torch.no_grad():
+                model_output, energies = self.forward(evidence, noise_scale=0.25)
+            choice[sample] = model_output.squeeze()[-1].cpu().numpy()
+        mean_choice = choice.mean(axis=0)
+        evidence = evidence.squeeze().cpu().numpy()
+        plt.scatter(evidence, mean_choice)
+        plt.xlabel("Evidence Strength")
+        plt.ylabel("Average Choice")
+        plt.pause(0.1)
+
 
 def set_results_path(task_name: str):
     cwd = os.getcwd()
