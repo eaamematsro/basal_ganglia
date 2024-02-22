@@ -259,7 +259,7 @@ class TwoChoiceDataset(Dataset):
         evidence_gain: float = 3,
         evidence_bias: float = 0,
     ):
-        """ Instantiates model class
+        """Instantiates model class
 
         Args:
             trial_duration: Duration of a trial in network time steps
@@ -285,7 +285,7 @@ class TwoChoiceDataset(Dataset):
             mask[sample, report_time:] = 1 / (trial_duration - report_time)
 
         self.masks: torch.Tensor = torchify(mask)
-        self.evidence: torch.Tensor = torchify(evidence)
+        self.evidence: torch.Tensor = torchify(evidence).unsqueeze(1)
         self.choice: torch.Tensor = torchify(choice)
         self.samples = n_samples
 
