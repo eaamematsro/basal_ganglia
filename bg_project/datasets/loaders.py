@@ -235,3 +235,71 @@ class PacmanDataset(Dataset):
             mean=np.zeros(self.kernel.shape[0]), cov=self.kernel, size=n_samples
         )
         return ys
+
+
+class TwoChoiceDataset(Dataset):
+    """Class for generating training data for two choice decision-making task
+
+    This class samples continuous trajectories from a gaussian process. It also
+    returns a tuple relating to object mass, environment viscosity, and pedal polarity.
+
+    Attributes:
+        choice: Torch tensor of target choices for each sample
+        evidence: Torch tensor of stimulus evidence for each sample.
+        masks: Torch tensor of masked values to include in loss computation
+        samples: Number of episodes in dataset.
+    """
+
+    def __init__(
+        self,
+        trial_duration: int = 500,
+        n_samples: int = 5000,
+        min_delay_frac: float = 0.7,
+        max_delay_frac: float = 0.9,
+        evidence_gain: float = 3,
+        evidence_bias: float = 0,
+    ):
+        """ Instantiates model class
+
+        Args:
+            trial_duration: Duration of a trial in network time steps
+            n_samples: Number of trials in dataset
+            min_delay_frac: Minimum time at which delay ends
+            max_delay_frac: Maximum time at which delay ends
+            evidence_gain: Strength of evidence on choice
+            evidence_bias: Choice bias, if negative choices are biased towards -1 even with low evidence
+        """
+
+        super(TwoChoiceDataset, self).__init__()
+        mask = np.zeros((n_samples, trial_duration))
+        choice = np.zeros((n_samples, trial_duration))
+        evidence = np.random.rand(n_samples) * 2 - 1
+
+        min_delay = int(min_delay_frac * trial_duration)
+        max_delay = int(max_delay_frac * trial_duration)
+
+        for sample in range(n_samples):
+            report_time = np.random.randint(min_delay, max_delay)
+            prob = 1 / (1 + np.exp(-evidence_gain * (evidence[sample] - evidence_bias)))
+            choice[sample] = np.random.choice([-1, 1], p=[1 - prob, prob])
+            mask[sample, report_time:] = 1 / (trial_duration - report_time)
+
+        self.masks: torch.Tensor = torchify(mask)
+        self.evidence: torch.Tensor = torchify(evidence)
+        self.choice: torch.Tensor = torchify(choice)
+        self.samples = n_samples
+
+    def __getitem__(self, item):
+        """
+
+        Args:
+            item:
+
+        Returns:
+
+        """
+        return self.evidence[item], self.choice[item], self.masks[item]
+
+    def __len__(self):
+        """"""
+        return self.samples
