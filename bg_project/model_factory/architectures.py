@@ -42,6 +42,7 @@ class BaseArchitecture(nn.Module, metaclass=abc.ABCMeta):
         self.output_names = None
         self.set_save_path()
         self.set_outputs()
+        self.learning_styles = {}
 
     @abc.abstractmethod
     def set_outputs(self):
@@ -711,6 +712,16 @@ class PallidalRNN(BaseArchitecture, ABC):
             dt=dt,
             tau=tau,
         )
+
+        learning_types = {
+            "inputs": [self.rnn.I],
+            "cortical": [self.rnn.J, self.rnn.B],
+            "pallidal": [self.rnn.Wb],
+            "thalamocortical": [self.rnn.U],
+            "corticothalamo": [self.rnn.Vt],
+        }
+
+        self.learning_styles.update(learning_types)
 
     def set_outputs(self):
         self.output_names = ["r_hidden", "r_act"]

@@ -682,6 +682,7 @@ class MultiGainPacMan(Task):
             "current_height": (1, True),
             "target_derivative": (1, True),
             "target_height": (1, True),
+            "environment_params": (ncontext, True),
         }
 
         super(MultiGainPacMan, self).__init__(
@@ -743,6 +744,7 @@ class MultiGainPacMan(Task):
                 "current_height": position_store[ti - 1].clone(),
                 "target_derivative": ((targets[ti] - targets[ti - 1]))[:, None],
                 "target_height": targets[ti][:, None],
+                "environment_params": contexts.T,
             }
             outputs = self.network(
                 bg_inputs=bg_inputs,

@@ -2,5 +2,6 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/bg_project/eaa_rl_algorithms" vcs="Git" />
   </component>
 </project>
