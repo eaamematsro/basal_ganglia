@@ -1018,6 +1018,103 @@ class MultiGainPacMan(Task):
         plt.pause(0.1)
 
 
+class TwoChoiceDecision(Task):
+    def __init__(
+        self,
+        network: Optional[str] = "PallidalRNN",
+        number_of_neurons: int = 250,
+        duration: int = 150,
+        nbg: int = 10,
+        ncontext: int = 4,
+        apply_energy_penalty: Optional[Tuple[str, ...]] = None,
+        energy_penalty: float = 1e-2,
+        **kwargs,
+    ):
+        if apply_energy_penalty is None:
+            apply_energy_penalty = ()
+
+        kwargs["ncontext"] = ncontext
+        rnn_input_source = {
+            "evidence": (1, True),
+        }
+
+        super(TwoChoiceDecision, self).__init__(
+            network=network,
+            nneurons=number_of_neurons,
+            nbg=nbg,
+            input_sources=rnn_input_source,
+            include_bias=True,
+            task="TwoChoice",
+            **kwargs,
+        )
+
+        self.save_hyperparameters(ignore=["original_model"])
+        self.network.params.update({"task": "TwoChoice"})
+        self.network.params.update(kwargs)
+        self._set_difficulty_level(**kwargs)
+        self.network.Wout = nn.Parameter(
+            torchify(np.random.randn(number_of_neurons, 1) / np.sqrt(1))
+        )
+        self.penalize_activity = apply_energy_penalty
+        self.duration = duration
+        self.dt = self.network.rnn.dt
+        self.optimizer = None
+        self.energy_penalty = energy_penalty
+
+    def _set_difficulty_level(self, difficulty: float = 0.1, **kwargs):
+        self.difficulty = difficulty
+
+    def forward(
+        self,
+        evidence: torch.Tensor,
+        **kwargs,
+    ) -> Any:
+        """"""
+        batch_size = evidence.shape[0]
+
+        choice_store = torch.zeros(
+            self.duration, batch_size, 1, device=self.network.Wout.device
+        )
+
+        self.network.rnn.reset_state(batch_size)
+        energies = {}
+        [energies.update({key: None}) for key in self.penalize_activity]
+
+        stimulus_noise = torch.randn_like(evidence) * np.sqrt(self.difficulty * 2 / 3)
+
+        for ti in range(self.duration):
+
+            rnn_input = {
+                "evidence": evidence + stimulus_noise,
+            }
+
+            outputs = self.network(
+                rnn_inputs=rnn_input,
+                **kwargs,
+            )
+            choice_store[ti] = torch.clamp(
+                outputs["r_act"] @ self.network.Wout, -1e1, 1e1
+            )
+
+            for key in self.penalize_activity:
+                if energies[key] is None:
+                    energies[key] = torch.zeros(
+                        (self.duration, *outputs[key].shape), device=outputs[key].device
+                    )
+                energies[key][ti] = outputs[key]
+        return choice_store, energies
+
+    def compute_loss(
+        self,
+        target: torch.Tensor,
+        model_output: torch.Tensor,
+        network_energy: Optional[dict] = None,
+        optimal_forces: Optional[torch.Tensor] = None,
+        use_optimal: bool = False,
+    ) -> dict:
+        """"""
+
+
 def set_results_path(task_name: str):
     cwd = os.getcwd()
     cwd_path = Path(cwd)
