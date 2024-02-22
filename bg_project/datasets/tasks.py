@@ -1106,13 +1106,115 @@ class TwoChoiceDecision(Task):
 
     def compute_loss(
         self,
-        target: torch.Tensor,
+        target_choice: torch.Tensor,
         model_output: torch.Tensor,
+        mask: torch.Tensor,
         network_energy: Optional[dict] = None,
-        optimal_forces: Optional[torch.Tensor] = None,
-        use_optimal: bool = False,
     ) -> dict:
-        """"""
+        """
+        Compute the loss for the batch
+        Args:
+            target_choice: Target choice that model should reproduce
+            model_output: Actual model choice
+            mask: Mask determining which choice epochs to weight in loss
+            network_energy: Internal energy of the model
+
+        Returns:
+
+        """
+
+        decision_loss = (
+            ((model_output.squeeze().T - target_choice) ** 2 * mask).sum(axis=1).mean()
+        )
+
+        energy_loss = 0
+        if network_energy is not None:
+            for key in self.penalize_activity:
+                energy_loss = (
+                    energy_loss + torch.linalg.norm(network_energy[key], dim=-1).mean()
+                )
+        total_loss = decision_loss + self.energy_penalty * energy_loss
+        loss = {
+            "energy": self.energy_penalty * energy_loss,
+            "decision": decision_loss,
+            "total": total_loss,
+        }
+
+        return loss
+
+    def training_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
+
+        evidence, choice, mask = batch
+        model_output, energies = self.forward(evidence, noise_scale=0.25)
+        loss = self.compute_loss(
+            choice,
+            model_output,
+            mask,
+            energies,
+        )
+        self.log(
+            "train_loss",
+            loss["total"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        self.log(
+            "energy_loss",
+            loss["energy"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        return loss["total"]
+
+    def validation_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
+
+        evidence, choice, mask = batch
+        model_output, energies = self.forward(evidence, noise_scale=0)
+        loss = self.compute_loss(
+            choice,
+            model_output,
+            mask,
+            energies,
+        )
+
+        self.log(
+            "val_loss",
+            loss["total"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+        self.log("hp/metric_1", loss["decision"], sync_dist=True)
+        return loss["total"]
+
+    def test_step(self, batch: torch.Tensor, batch_idx) -> torch.Tensor:
+        evidence, choice, mask = batch
+        model_output, energies = self.forward(evidence, noise_scale=0)
+        loss = self.compute_loss(
+            choice,
+            model_output,
+            mask,
+            energies,
+        )
+
+        self.log(
+            "test_loss",
+            loss["total"],
+            prog_bar=True,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
+        )
+
+        self.log("hp/metric_2", loss["decision"], sync_dist=True)
+        self.log("hp_metric", loss["decision"], sync_dist=True)
+        self.network.test_loss.append(loss["decision"].cpu().numpy())
+        return loss["total"]
 
 
 def set_results_path(task_name: str):
