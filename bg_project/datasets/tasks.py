@@ -1085,7 +1085,7 @@ class TwoChoiceDecision(Task):
         for ti in range(self.duration):
 
             rnn_input = {
-                "evidence": evidence + stimulus_noise,
+                "evidence": (evidence[:, ti] + stimulus_noise[:, ti]).unsqueeze(1),
             }
 
             outputs = self.network(
@@ -1217,7 +1217,11 @@ class TwoChoiceDecision(Task):
         return loss["total"]
 
     def calculate_psychometrics(self, samples: int = 100):
-        evidence = torchify(np.linspace(-1, 1)).unsqueeze(1)
+
+        evidence_1d = np.linspace(-1, 1)
+        evidence_2d = np.tile(evidence_1d[:, np.newaxis], (1, self.duration))
+        evidence_2d[:, int(0.5 * self.duration) :] = 0
+        evidence = torchify(evidence_2d)
         choice = np.zeros((samples, evidence.shape[0]))
 
         for sample in range(samples):
@@ -1225,8 +1229,7 @@ class TwoChoiceDecision(Task):
                 model_output, energies = self.forward(evidence, noise_scale=0.25)
             choice[sample] = model_output.squeeze()[-1].cpu().numpy()
         mean_choice = choice.mean(axis=0)
-        evidence = evidence.squeeze().cpu().numpy()
-        plt.scatter(evidence, mean_choice)
+        plt.scatter(evidence_1d, mean_choice)
         plt.xlabel("Evidence Strength")
         plt.ylabel("Average Choice")
         plt.pause(0.1)

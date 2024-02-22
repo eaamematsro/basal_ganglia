@@ -256,6 +256,7 @@ class TwoChoiceDataset(Dataset):
         n_samples: int = 5000,
         min_delay_frac: float = 0.7,
         max_delay_frac: float = 0.9,
+        delay_duration_frac: float = 0.5,
         evidence_gain: float = 3,
         evidence_bias: float = 0,
     ):
@@ -266,6 +267,7 @@ class TwoChoiceDataset(Dataset):
             n_samples: Number of trials in dataset
             min_delay_frac: Minimum time at which delay ends
             max_delay_frac: Maximum time at which delay ends
+            delay_duration_frac: Length of minimum delay period
             evidence_gain: Strength of evidence on choice
             evidence_bias: Choice bias, if negative choices are biased towards -1 even with low evidence
         """
@@ -273,19 +275,21 @@ class TwoChoiceDataset(Dataset):
         super(TwoChoiceDataset, self).__init__()
         mask = np.zeros((n_samples, trial_duration))
         choice = np.zeros((n_samples, trial_duration))
-        evidence = np.random.rand(n_samples) * 2 - 1
+        evidence = np.zeros((n_samples, trial_duration))
+
+        evidence_base = np.random.rand(n_samples) * 2 - 1
 
         min_delay = int(min_delay_frac * trial_duration)
         max_delay = int(max_delay_frac * trial_duration)
-
+        delay_start = int(delay_duration_frac * trial_duration)
         for sample in range(n_samples):
             report_time = np.random.randint(min_delay, max_delay)
-            prob = 1 / (1 + np.exp(-evidence_gain * (evidence[sample] - evidence_bias)))
-            choice[sample] = np.random.choice([-1, 1], p=[1 - prob, prob])
+            evidence[sample, :delay_start] = evidence_base[sample]
+            choice[sample] = np.sign(evidence_base[sample])
             mask[sample, report_time:] = 1 / (trial_duration - report_time)
 
         self.masks: torch.Tensor = torchify(mask)
-        self.evidence: torch.Tensor = torchify(evidence).unsqueeze(1)
+        self.evidence: torch.Tensor = torchify(evidence)
         self.choice: torch.Tensor = torchify(choice)
         self.samples = n_samples
 
