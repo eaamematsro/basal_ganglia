@@ -25,7 +25,7 @@ class CustomEnv(Env, metaclass=abc.ABCMeta):
         if pygame is not None:
             self.pygame: PyGame = pygame()
         else:
-            self.pygame = pygame
+            self.pygame: PyGame = pygame
         self._initialize_spaces()
         self.render_mode = render_mode
         self.clock = None
