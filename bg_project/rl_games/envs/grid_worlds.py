@@ -2,7 +2,7 @@ import pdb
 
 import numpy as np
 from rl_games.envs.custom_env import CustomEnv
-from rl_games.pygames.rl_games import GridWorld, MultiWorldGridWorld
+from rl_games.pygames.rl_games import GridWorld, MultiWorldGridWorld, MultiRoomGridWorld
 from gymnasium import spaces
 
 
@@ -23,6 +23,12 @@ class GridWorldEnv(CustomEnv):
 
     def __init__(self, **kwargs):
         super().__init__(pygame=GridWorld, **kwargs)
+        self.pygame.reset()
+
+
+class MultiRoomGridWorldEnv(GridWorldEnv):
+    def __init__(self, **kwargs):
+        super().__init__(pygame=MultiRoomGridWorld, **kwargs)
         self.pygame.reset()
 
 

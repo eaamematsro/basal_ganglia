@@ -153,7 +153,6 @@ class GridWorld(PyGame):
 
             self.target_pos = np.array([x, y])
 
-
     def generate_agent(self):
         if self.target_pos is None:
             x = random.randrange(3, self.width - 1)
