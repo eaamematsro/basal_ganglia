@@ -1,14 +1,12 @@
-import pdb
-
-import pygame
-import random
 import abc
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.backends.backend_agg as agg
+import random
 from itertools import product
-from abc import ABC
-from typing import Dict, Sequence, Tuple, Union
+from typing import Dict, Sequence, Tuple
+
+import matplotlib.backends.backend_agg as agg
+import matplotlib.pyplot as plt
+import numpy as np
+import pygame
 from scipy.ndimage import gaussian_filter1d
 
 
@@ -25,12 +23,12 @@ class WallObj:
 
 class PyGame(metaclass=abc.ABCMeta):
     def __init__(
-        self,
-        width: int = 630,
-        height: int = 480,
-        title: str = "BaseModel",
-        fps: int = 10,
-        **kwargs,
+            self,
+            width: int = 630,
+            height: int = 480,
+            title: str = "BaseModel",
+            fps: int = 10,
+            **kwargs,
     ):
         pygame.init()
         self.render_mode = None
@@ -59,19 +57,19 @@ class PyGame(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def evaluate(
-        self,
+            self,
     ):
         """Returns reward of the current frame"""
 
     @abc.abstractmethod
     def is_done(
-        self,
+            self,
     ):
         """Checks whether game is finished"""
 
     @abc.abstractmethod
     def get_info(
-        self,
+            self,
     ) -> Dict:
         """Returns info about current episode"""
 
@@ -148,21 +146,32 @@ class GridWorld(PyGame):
         if self.target_pos is None or self.done:
             x = random.randrange(3, self.width - 1)
             y = random.randrange(3, self.height - 1)
+
+            while self.detect_wall_collision((x, y)):
+                x = random.randrange(3, self.width - 1)
+                y = random.randrange(3, self.height - 1)
+
             self.target_pos = np.array([x, y])
+
 
     def generate_agent(self):
         if self.target_pos is None:
             x = random.randrange(3, self.width - 1)
             y = random.randrange(3, self.height - 1)
+
+            while self.detect_wall_collision((x, y)):
+                x = random.randrange(3, self.width - 1)
+                y = random.randrange(3, self.height - 1)
+
             self.agent_pos = np.array([x, y])
             self.velocity = (0, 0)
 
     def detect_collision(self):
         if (
-            np.sqrt(
-                ((np.asarray(self.target_pos) - np.asarray(self.agent_pos)) ** 2).sum()
-            )
-            <= 1.5 * self.agent_size
+                np.sqrt(
+                    ((np.asarray(self.target_pos) - np.asarray(self.agent_pos)) ** 2).sum()
+                )
+                <= 2 * self.agent_size
         ):
             self.done = True
             self.score += 1
@@ -190,9 +199,9 @@ class GridWorld(PyGame):
             x, y = self.agent_pos
 
             pos = (
-                np.asarray([x, y])
-                + self.gain * (self.betas @ action)
-                + np.asarray(self.drifts)
+                    np.asarray([x, y])
+                    + self.gain * (self.betas @ action)
+                    + np.asarray(self.drifts)
             )
             wall_collision = self.detect_wall_collision(pos)
             if not wall_collision:
@@ -229,7 +238,7 @@ class GridWorld(PyGame):
         self.close()
 
     def get_info(
-        self,
+            self,
     ) -> Dict:
 
         info = {"r": self.reward}
@@ -270,14 +279,14 @@ class GridWorld(PyGame):
             pygame.display.update()
 
     def is_done(
-        self,
+            self,
     ):
         if self.time_steps == self.max_time:
             self.done = True
         return self.done
 
     def evaluate(
-        self,
+            self,
     ):
         """"""
         current_distance = np.sqrt(((self.target_pos - self.agent_pos) ** 2).sum())
@@ -293,30 +302,133 @@ class GridWorld(PyGame):
         return self.reward
 
 
-class MultiWorldGridWorld(GridWorld):
-    def __init__(self, x_divisions: int = 2, y_divisions: int = 1, **kwargs):
+class MultiRoomGridWorld(GridWorld):
+    def __init__(self, x_divisions: int = 2, y_divisions: int = 2, boundary: int = 5,
+                 gap_multiplier: int = 4, **kwargs):
         super().__init__(**kwargs)
 
-        self.betas = {}
         self.x_divs = x_divisions
         if x_divisions > 1:
-            self.x_bins = np.linspace(0, self.width, x_divisions + 1)[:x_divisions]
+            self.x_bins = (np.linspace(0, self.width, x_divisions + 1)[:x_divisions]).tolist()
         else:
             self.x_bins = None
 
         self.y_divs = y_divisions
         if y_divisions > 1:
-            self.y_bins = np.linspace(0, self.height, y_divisions + 1)[:y_divisions]
+            self.y_bins = (np.linspace(0, self.height, y_divisions + 1)[:y_divisions]).tolist()
         else:
             self.y_bins = None
 
+        if self.x_bins is not None:
+            x_bins = self.x_bins.copy()
+            x_bins.append(self.width)
+        else:
+            x_bins = [0]
+            x_bins.append(self.width)
+
+        if self.y_bins is not None:
+            y_bins = self.y_bins.copy()
+            y_bins.append(self.height)
+        else:
+            y_bins = [0]
+            y_bins.append(self.height)
+
+        for x_div, y_div in product(range(x_divisions), range(y_divisions)):
+            if x_div <= x_divisions - 1:
+                self.add_wall(
+                    x_range=(x_bins[x_div],
+                             x_bins[x_div] + int((x_bins[x_div + 1] - x_bins[x_div]) / 2) - gap_multiplier * boundary),
+                    y_range=(y_bins[y_div] - boundary, y_bins[y_div] + boundary)
+                )
+
+                self.add_wall(
+                    x_range=(x_bins[x_div] + int((x_bins[x_div + 1] - x_bins[x_div]) / 2) + gap_multiplier * boundary,
+                             x_bins[x_div + 1]),
+                    y_range=(y_bins[y_div] - boundary, y_bins[y_div] + boundary)
+                )
+
+            if y_div <= y_divisions - 1:
+                self.add_wall(
+                    y_range=(
+                        y_bins[y_div],
+                        y_bins[y_div] + int((y_bins[y_div + 1] - y_bins[y_div]) / 2) - gap_multiplier * boundary),
+                    x_range=(x_bins[x_div] - boundary, x_bins[x_div] + boundary)
+                )
+
+                self.add_wall(
+                    y_range=(
+                        y_bins[y_div] + int((y_bins[y_div + 1] - y_bins[y_div]) / 2) + gap_multiplier * boundary,
+                        y_bins[y_div + 1]),
+                    x_range=(x_bins[x_div] - boundary, x_bins[x_div] + boundary)
+                )
+
+
+class MultiWorldGridWorld(GridWorld):
+    def __init__(self, x_divisions: int = 2, y_divisions: int = 2, boundary: int = 5,
+                 gap_multiplier: int = 4, **kwargs):
+        super().__init__(**kwargs)
+
+        self.betas = {}
+        self.x_divs = x_divisions
+        if x_divisions > 1:
+            self.x_bins = (np.linspace(0, self.width, x_divisions + 1)[:x_divisions]).tolist()
+        else:
+            self.x_bins = None
+
+        self.y_divs = y_divisions
+        if y_divisions > 1:
+            self.y_bins = (np.linspace(0, self.height, y_divisions + 1)[:y_divisions]).tolist()
+        else:
+            self.y_bins = None
+
+        if self.x_bins is not None:
+            x_bins = self.x_bins.copy()
+            x_bins.append(self.width)
+        else:
+            x_bins = [0]
+            x_bins.append(self.width)
+
+        if self.y_bins is not None:
+            y_bins = self.y_bins.copy()
+            y_bins.append(self.height)
+        else:
+            y_bins = [0]
+            y_bins.append(self.height)
+
         for x_div, y_div in product(range(x_divisions), range(y_divisions)):
             rotation = np.sqrt(180) * np.random.randn()
+            if x_div <= x_divisions - 1:
+                self.add_wall(
+                    x_range=(x_bins[x_div],
+                             x_bins[x_div] + int((x_bins[x_div + 1] - x_bins[x_div]) / 2) - gap_multiplier * boundary),
+                    y_range=(y_bins[y_div] - boundary, y_bins[y_div] + boundary)
+                )
+
+                self.add_wall(
+                    x_range=(x_bins[x_div] + int((x_bins[x_div + 1] - x_bins[x_div]) / 2) + gap_multiplier * boundary,
+                             x_bins[x_div + 1]),
+                    y_range=(y_bins[y_div] - boundary, y_bins[y_div] + boundary)
+                )
+
+            if y_div <= y_divisions - 1:
+                self.add_wall(
+                    y_range=(
+                        y_bins[y_div],
+                        y_bins[y_div] + int((y_bins[y_div + 1] - y_bins[y_div]) / 2) - gap_multiplier * boundary),
+                    x_range=(x_bins[x_div] - boundary, x_bins[x_div] + boundary)
+                )
+
+                self.add_wall(
+                    y_range=(
+                        y_bins[y_div] + int((y_bins[y_div + 1] - y_bins[y_div]) / 2) + gap_multiplier * boundary,
+                        y_bins[y_div + 1]),
+                    x_range=(x_bins[x_div] - boundary, x_bins[x_div] + boundary)
+                )
 
             self.betas.update(
                 {
                     (x_div, y_div): 0 * np.eye(2)
-                    + np.asarray(
+                                    + np.asarray(
                         [
                             [
                                 np.cos(rotation * np.pi / 180),
@@ -351,26 +463,29 @@ class MultiWorldGridWorld(GridWorld):
             else:
                 idy = 0
             pos = (
-                np.asarray([x, y])
-                + self.gain * (self.betas[(idx, idy)] @ action)
-                + np.asarray(self.drifts)
+                    np.asarray([x, y])
+                    + self.gain * (self.betas[(idx, idy)] @ action)
+                    + np.asarray(self.drifts)
             )
-            self.agent_pos = pos
+
+            wall_collision = self.detect_wall_collision(pos)
+            if not wall_collision:
+                self.agent_pos = pos
 
 
 class SineGeneration(PyGame):
     def __init__(
-        self,
-        amplitudes: Sequence[float] = (1,),
-        phases: Sequence[float] = (0,),
-        frequencies: Sequence[float] = (1,),
-        go_bounds: Sequence[float] = (0.05, 0.2),
-        stop_bounds: Sequence[float] = (0.75, 0.9),
-        hold_weight: float = 1,
-        duration: int = 5,
-        step_size: float = 0.01,
-        tolerance: float = 0.25,
-        **kwargs,
+            self,
+            amplitudes: Sequence[float] = (1,),
+            phases: Sequence[float] = (0,),
+            frequencies: Sequence[float] = (1,),
+            go_bounds: Sequence[float] = (0.05, 0.2),
+            stop_bounds: Sequence[float] = (0.75, 0.9),
+            hold_weight: float = 1,
+            duration: int = 5,
+            step_size: float = 0.01,
+            tolerance: float = 0.25,
+            **kwargs,
     ) -> None:
         super().__init__(title=type(self).__name__, **kwargs)
 
@@ -438,7 +553,7 @@ class SineGeneration(PyGame):
             int(self.go_bounds[1] * self.episode_length),
         )
 
-        go_cue[go_time - 5 : go_time + 5] = 1
+        go_cue[go_time - 5: go_time + 5] = 1
         go_cue = gaussian_filter1d(go_cue, sigma=5)
         go_cue /= go_cue.std()
 
@@ -447,7 +562,7 @@ class SineGeneration(PyGame):
             int(self.stop_bounds[1] * self.episode_length),
         )
 
-        stop_cue[stop_time - 5 : stop_time + 5] = 1
+        stop_cue[stop_time - 5: stop_time + 5] = 1
         stop_cue = gaussian_filter1d(stop_cue, sigma=5)
         stop_cue /= stop_cue.std()
 
@@ -488,7 +603,7 @@ class SineGeneration(PyGame):
             weight = 1
 
         error = weight * (self.agent_pos - self.target_position[self.time_step]) ** 2
-        reward = np.exp(-1 * (error / (self.tolerance**2)))
+        reward = np.exp(-1 * (error / (self.tolerance ** 2)))
 
         if type(reward) is float:
             self.reward = reward / self.episode_length
@@ -557,7 +672,7 @@ class SineGeneration(PyGame):
         # pygame.display.flip()
 
     def get_info(
-        self,
+            self,
     ) -> Dict:
         info = {"r": self.reward}
         return info
@@ -582,6 +697,6 @@ class SineGeneration(PyGame):
 
 
 if __name__ == "__main__":
-    game = GridWorld(testing_mode=True)
+    game = MultiRoomGridWorld(testing_mode=True)
     game.run()
     pass
