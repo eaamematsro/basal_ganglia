@@ -1,4 +1,5 @@
 import abc
+import pdb
 import random
 from itertools import product
 from typing import Dict, Sequence, Tuple
@@ -80,7 +81,7 @@ class PyGame(metaclass=abc.ABCMeta):
 
 class GridWorld(PyGame):
     def __init__(self, rotation: float = 0, max_time_steps: int = 500, testing_mode: bool = False,
-                 boundary_size: int = 5, agent_size: int = 8,
+                 boundary_size: int = 5, agent_size: int = 8, image_obs: bool = True,
                  **kwargs):
         super().__init__(title=type(self).__name__, **kwargs)
 
@@ -111,6 +112,7 @@ class GridWorld(PyGame):
         self.gain = 1
         self.drifts = np.zeros(2)
         self.agent_size = agent_size
+        self.image_obs = image_obs
 
     def add_wall(self, x_range: Tuple[int, int], y_range: Tuple[int, int]) -> None:
         wall = WallObj(x_start=x_range[0], x_end=x_range[1],
@@ -131,15 +133,20 @@ class GridWorld(PyGame):
         self.generate_target()
 
     def observe(self):
-        obs = np.array(
-            [
-                self.agent_pos[0] / self.width - 0.5,
-                self.target_pos[0] / self.width - 0.5,
-                self.agent_pos[1] / self.height - 0.5,
-                self.target_pos[1] / self.height - 0.5,
-            ],
-            dtype=np.float32,
-        )
+
+        if self.image_obs:
+            obs = np.array(pygame.surfarray.pixels3d(self.display))
+        else:
+            obs = np.array(
+                [
+                    self.agent_pos[0] / self.width - 0.5,
+                    self.target_pos[0] / self.width - 0.5,
+                    self.agent_pos[1] / self.height - 0.5,
+                    self.target_pos[1] / self.height - 0.5,
+                ],
+                dtype=np.float32,
+            )
+
         return obs
 
     def generate_target(self):
