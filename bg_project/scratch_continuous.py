@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument(
         "--gym-id",
         type=str,
-        default="GridWorld-v0",
+        default="MultiRoomGridWorld-v0",
         help="The name of the gym environment",
     )
     parser.add_argument(
@@ -170,7 +170,6 @@ def objective(trial):
 
 
 if __name__ == "__main__":
-
     args = parse_args()
     run_name = f"{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
