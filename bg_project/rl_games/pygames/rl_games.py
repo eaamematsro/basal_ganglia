@@ -9,7 +9,18 @@ import matplotlib.backends.backend_agg as agg
 from itertools import product
 from abc import ABC
 from typing import Dict, Sequence, Tuple, Union
-from scipy.ndimage.filters import gaussian_filter1d
+from scipy.ndimage import gaussian_filter1d
+
+
+class WallObj:
+    def __init__(self, x_start: int = 0, x_end: int = 100, y_start: int = 0, y_end: int = 5):
+        self.x_start = x_start
+        self.x_end = x_end
+        self.y_start = y_start
+        self.y_end = y_end
+
+        self.width = np.abs(x_end - x_start)
+        self.height = np.abs(y_end - y_start)
 
 
 class PyGame(metaclass=abc.ABCMeta):
@@ -70,8 +81,20 @@ class PyGame(metaclass=abc.ABCMeta):
 
 
 class GridWorld(PyGame):
-    def __init__(self, rotation: float = 90, max_time_steps: int = 500, **kwargs):
+    def __init__(self, rotation: float = 0, max_time_steps: int = 500, testing_mode: bool = False,
+                 boundary_size: int = 5, agent_size: int = 8,
+                 **kwargs):
         super().__init__(title=type(self).__name__, **kwargs)
+
+        self.walls = []
+
+        # Add boundaries #
+        self.add_wall(x_range=(0, self.width), y_range=(0, boundary_size))
+        self.add_wall(x_range=(0, self.width), y_range=(self.height - boundary_size, self.height))
+        self.add_wall(x_range=(0, boundary_size), y_range=(0, self.height))
+        self.add_wall(x_range=(self.width - boundary_size, self.width), y_range=(0, self.height))
+
+        self.testing = testing_mode
         self.target_pos = None
         self.agent_pos = None
         self.velocity = None
@@ -89,6 +112,12 @@ class GridWorld(PyGame):
         )
         self.gain = 1
         self.drifts = np.zeros(2)
+        self.agent_size = agent_size
+
+    def add_wall(self, x_range: Tuple[int, int], y_range: Tuple[int, int]) -> None:
+        wall = WallObj(x_start=x_range[0], x_end=x_range[1],
+                       y_start=y_range[0], y_end=y_range[1])
+        self.walls.append(wall)
 
     def reset(self):
         """"""
@@ -128,26 +157,29 @@ class GridWorld(PyGame):
             self.agent_pos = np.array([x, y])
             self.velocity = (0, 0)
 
-    def detect_collision(self, boundary: int = 5):
+    def detect_collision(self):
         if (
             np.sqrt(
                 ((np.asarray(self.target_pos) - np.asarray(self.agent_pos)) ** 2).sum()
             )
-            <= 15
+            <= 1.5 * self.agent_size
         ):
             self.done = True
             self.score += 1
         else:
             self.done = False
 
-        if self.agent_pos[0] < 0:
-            self.agent_pos = (0, self.agent_pos[1])
-        elif self.agent_pos[0] > self.width - boundary:
-            self.agent_pos = (self.width - boundary, self.agent_pos[1])
-        if self.agent_pos[1] < 0:
-            self.agent_pos = (self.agent_pos[0], 0)
-        elif self.agent_pos[1] > self.height - boundary:
-            self.agent_pos = (self.agent_pos[0], self.height - boundary)
+    def detect_wall_collision(self, pos):
+        for wall in self.walls:
+            x_lines = np.arange(wall.x_start, wall.x_end)
+            y_lines = np.arange(wall.y_start, wall.y_end)
+            xx, yy = np.meshgrid(x_lines, y_lines)
+            agent_distances = np.sqrt((pos[0] - xx) ** 2 + (pos[1] - yy) ** 2)
+
+            if agent_distances.min() <= self.agent_size:
+                return True
+
+        return False
 
     def act(self, action: np.ndarray):
         self.time_steps += 1
@@ -162,14 +194,14 @@ class GridWorld(PyGame):
                 + self.gain * (self.betas @ action)
                 + np.asarray(self.drifts)
             )
-
-            self.agent_pos = pos
+            wall_collision = self.detect_wall_collision(pos)
+            if not wall_collision:
+                self.agent_pos = pos
 
         self.detect_collision()
 
-    def run(self):
+    def run(self, scale: float = 10):
         self.running = True
-
         while self.running:
             self.generate_agent()
             self.generate_target()
@@ -183,13 +215,13 @@ class GridWorld(PyGame):
                         self.running = False
                         break
                     if event.key == pygame.K_UP:
-                        action = np.array([0, -1])
+                        action = np.array([0, -scale])
                     elif event.key == pygame.K_DOWN:
-                        action = np.array([0, 1])
+                        action = np.array([0, scale])
                     elif event.key == pygame.K_LEFT:
-                        action = np.array([-1, 0])
+                        action = np.array([-scale, 0])
                     elif event.key == pygame.K_RIGHT:
-                        action = np.array([1, 0])
+                        action = np.array([scale, 0])
             self.act(action)
             self.detect_collision()
             self.evaluate()
@@ -210,20 +242,32 @@ class GridWorld(PyGame):
         img = self.font.render(f"{self.reward: 0.2f}", True, (57, 60, 65))
 
         self.display.blit(
-            img, img.get_rect(center=(20 * 15 + 15, 15 * 15 + 15)).topleft
+            img, img.get_rect(center=(20 * self.agent_size + self.agent_size,
+                                      self.agent_size * self.agent_size + self.agent_size)).topleft
         )
 
-        pygame.draw.rect(
+        pygame.draw.circle(
             self.display,
             "RED",
-            (self.target_pos[0], self.target_pos[1], 15, 15),
-        )
+            (self.target_pos[0], self.target_pos[1]),
+            self.agent_size),
 
-        pygame.draw.rect(
+        pygame.draw.circle(
             self.display,
             "White",
-            (self.agent_pos[0], self.agent_pos[1], 15, 15),
+            (self.agent_pos[0], self.agent_pos[1]),
+            self.agent_size
         )
+
+        for wall in self.walls:
+            pygame.draw.rect(
+                self.display,
+                "Black",
+                (wall.x_start, wall.y_start, wall.width, wall.height),
+            )
+
+        if self.testing:
+            pygame.display.update()
 
     def is_done(
         self,
@@ -535,3 +579,9 @@ class SineGeneration(PyGame):
             self.evaluate()
             self.view()  # update display surface
         self.close()
+
+
+if __name__ == "__main__":
+    game = GridWorld(testing_mode=True)
+    game.run()
+    pass
