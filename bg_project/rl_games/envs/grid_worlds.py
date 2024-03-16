@@ -20,13 +20,13 @@ class GridWorldEnv(CustomEnv):
                 shape=(4,),
                 dtype=np.float32,
             )
-            
+
     def __init__(self, **kwargs):
         super().__init__(pygame=GridWorld, **kwargs)
         self.pygame.reset()
 
 
-class MultiWorldGridWorldEnv(CustomEnv):
+class MultiWorldGridWorldEnv(GridWorldEnv):
     def __init__(self, **kwargs):
         super().__init__(pygame=MultiWorldGridWorld, **kwargs)
         self.pygame.reset()
