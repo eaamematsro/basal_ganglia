@@ -81,7 +81,7 @@ class PyGame(metaclass=abc.ABCMeta):
 
 class GridWorld(PyGame):
     def __init__(self, rotation: float = 0, max_time_steps: int = 500, testing_mode: bool = False,
-                 boundary_size: int = 5, agent_size: int = 8, image_obs: bool = True,
+                 boundary_size: int = 5, agent_size: int = 8, image_obs: bool = False,
                  **kwargs):
         super().__init__(title=type(self).__name__, **kwargs)
 

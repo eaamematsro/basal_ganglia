@@ -27,7 +27,7 @@ class GridWorldEnv(CustomEnv):
 
 
 class MultiRoomGridWorldEnv(CustomEnv):
-    def _initialize_spaces(self, image_obs: bool = True):
+    def _initialize_spaces(self, image_obs: bool = False):
         self.action_space = spaces.Box(low=-20, high=20, shape=(2,), dtype=np.float32)
         if image_obs:
             self.observation_space = spaces.Box(
