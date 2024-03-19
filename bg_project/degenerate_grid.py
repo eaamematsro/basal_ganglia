@@ -82,7 +82,7 @@ def parse_args():
     parser.add_argument(
         "--total-time-steps",
         type=int,
-        default=100_000,
+        default=500_000,
         help="Total number of environment time steps",
     )
     parser.add_argument(
@@ -120,7 +120,7 @@ def parse_args():
     parser.add_argument(
         "--track",
         type=lambda x: bool(strtobool(x)),
-        default=False,
+        default=True,
         nargs="?",
         const=True,
         help="Whether to track experiment on wandb",
@@ -128,7 +128,7 @@ def parse_args():
     parser.add_argument(
         "--wandb-project-name",
         type=str,
-        default="cleanRL",
+        default="bgRL",
         help="WandB project name",
     )
     parser.add_argument(
@@ -197,7 +197,4 @@ if __name__ == "__main__":
         capture_videos=True,
         **vars(args),
     )
-    # study = optuna.create_study(direction="maximize")
-    # study.optimize(objective, n_trials=100)
-    # pdb.set_trace()
     model.learning()
