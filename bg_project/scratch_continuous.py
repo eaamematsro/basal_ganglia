@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument(
         "--gym-id",
         type=str,
-        default="MultiRoomGridWorld-v0",
+        default="DegenerateGridWorld-v0",
         help="The name of the gym environment",
     )
     parser.add_argument(

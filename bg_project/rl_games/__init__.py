@@ -2,6 +2,9 @@ from gymnasium.envs.registration import register
 
 register(id="GridWorld-v0", entry_point="rl_games.envs.grid_worlds:GridWorldEnv")
 
+register(id="DegenerateGridWorld-v0", entry_point="rl_games.envs.grid_worlds:DegenerateGridWorldEnv")
+
+
 register(
     id="MultiRoomGridWorld-v0",
     entry_point="rl_games.envs.grid_worlds:MultiRoomGridWorldEnv",

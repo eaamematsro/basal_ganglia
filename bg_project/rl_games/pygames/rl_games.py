@@ -308,6 +308,32 @@ class GridWorld(PyGame):
         return self.reward
 
 
+class DegenerateGridWorld(GridWorld):
+    def __init__(self, action_dim: int = 10, **kwargs):
+        super().__init__(**kwargs)
+
+        transformation_mat = np.random.randn(2, action_dim) / np.sqrt(action_dim)
+        self.transition_mat = transformation_mat
+
+    def act(self, action: np.ndarray):
+        self.time_steps += 1
+        if self.done:
+            self.reset()
+        else:
+            x, y = self.agent_pos
+
+            pos = (
+                    np.asarray([x, y])
+                    + self.gain * (self.betas @ action)
+                    + np.asarray(self.drifts)
+            )
+            wall_collision = self.detect_wall_collision(pos)
+            if not wall_collision:
+                self.agent_pos = pos
+
+        self.detect_collision()
+
+
 class MultiRoomGridWorld(GridWorld):
     def __init__(self, x_divisions: int = 2, y_divisions: int = 2, boundary: int = 5,
                  gap_multiplier: int = 4, **kwargs):
@@ -703,6 +729,6 @@ class SineGeneration(PyGame):
 
 
 if __name__ == "__main__":
-    game = MultiRoomGridWorld(testing_mode=True)
+    game = DegenerateGridWorld(testing_mode=True)
     game.run()
     pass

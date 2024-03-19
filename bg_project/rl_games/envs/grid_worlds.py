@@ -26,6 +26,26 @@ class GridWorldEnv(CustomEnv):
         self.pygame.reset()
 
 
+class DegenerateGridWorldEnv(CustomEnv):
+    def _initialize_spaces(self, image_obs: bool = True, action_dim: int = 10):
+        self.action_space = spaces.Box(low=-20, high=20, shape=(10,), dtype=np.float32)
+        if image_obs:
+            self.observation_space = spaces.Box(
+                low=0, high=255, shape=(self.pygame.width, self.pygame.height, 3)
+                , dtype=np.uint8)
+        else:
+            self.observation_space = spaces.Box(
+                low=-0.5,
+                high=0.5,
+                shape=(4,),
+                dtype=np.float32,
+            )
+
+    def __init__(self, **kwargs):
+        super().__init__(pygame=GridWorld, **kwargs)
+        self.pygame.reset()
+
+
 class MultiRoomGridWorldEnv(CustomEnv):
     def _initialize_spaces(self, image_obs: bool = False):
         self.action_space = spaces.Box(low=-20, high=20, shape=(2,), dtype=np.float32)
@@ -66,4 +86,4 @@ class MultiWorldGridWorldEnv(CustomEnv):
 
 if __name__ == '__main__':
 
-    test_world = GridWorldEnv()
+    test_world = DegenerateGridWorldEnv()
