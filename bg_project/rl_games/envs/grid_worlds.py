@@ -2,7 +2,7 @@ import pdb
 
 import numpy as np
 from rl_games.envs.custom_env import CustomEnv
-from rl_games.pygames.rl_games import GridWorld, MultiWorldGridWorld, MultiRoomGridWorld
+from rl_games.pygames.rl_games import GridWorld, MultiWorldGridWorld, MultiRoomGridWorld, DegenerateGridWorld
 from gymnasium import spaces
 
 
@@ -27,7 +27,7 @@ class GridWorldEnv(CustomEnv):
 
 
 class DegenerateGridWorldEnv(CustomEnv):
-    def _initialize_spaces(self, image_obs: bool = True, action_dim: int = 10):
+    def _initialize_spaces(self, image_obs: bool = False, action_dim: int = 30):
         self.action_space = spaces.Box(low=-20, high=20, shape=(10,), dtype=np.float32)
         if image_obs:
             self.observation_space = spaces.Box(
@@ -42,7 +42,7 @@ class DegenerateGridWorldEnv(CustomEnv):
             )
 
     def __init__(self, **kwargs):
-        super().__init__(pygame=GridWorld, **kwargs)
+        super().__init__(pygame=DegenerateGridWorld, **kwargs)
         self.pygame.reset()
 
 

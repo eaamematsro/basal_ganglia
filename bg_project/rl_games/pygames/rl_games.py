@@ -324,7 +324,7 @@ class DegenerateGridWorld(GridWorld):
 
             pos = (
                     np.asarray([x, y])
-                    + self.gain * (self.betas @ action)
+                    + self.gain * (self.betas @ self.transition_mat @ action)
                     + np.asarray(self.drifts)
             )
             wall_collision = self.detect_wall_collision(pos)
