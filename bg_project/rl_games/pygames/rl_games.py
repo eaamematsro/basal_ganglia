@@ -303,7 +303,7 @@ class GridWorld(PyGame):
                 direction_reward = 1
             elif self.prev_dist < current_distance:
                 direction_reward = -5
-        self.reward = reward_distance + direction_reward
+        self.reward = reward_distance - 1 #+ direction_reward
         self.prev_dist = current_distance
         return self.reward
 

@@ -19,14 +19,15 @@ class CustomEnv(Env, metaclass=abc.ABCMeta):
     }
 
     def __init__(
-        self, render_mode: Optional[str] = None, pygame: Optional[Callable] = None
+        self, render_mode: Optional[str] = None, pygame: Optional[Callable] = None,
+            **kwargs
     ):
         super().__init__()
         if pygame is not None:
-            self.pygame: PyGame = pygame()
+            self.pygame: PyGame = pygame(**kwargs)
         else:
             self.pygame: PyGame = pygame
-        self._initialize_spaces()
+        self._initialize_spaces(**kwargs)
         self.render_mode = render_mode
         self.clock = None
 

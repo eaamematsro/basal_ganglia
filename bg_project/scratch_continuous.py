@@ -120,7 +120,7 @@ def parse_args():
     parser.add_argument(
         "--track",
         type=lambda x: bool(strtobool(x)),
-        default=False,
+        default=True,
         nargs="?",
         const=True,
         help="Whether to track experiment on wandb",

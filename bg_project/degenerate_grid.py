@@ -43,6 +43,11 @@ def parse_args():
     parser.add_argument(
         "--num-envs", type=int, default=1, help="Number of parallel environments to run"
     )
+
+    parser.add_argument(
+        "--action-dim", type=int, default=25, help="Action dimensionality"
+    )
+
     parser.add_argument(
         "--num-steps",
         type=int,
@@ -82,7 +87,7 @@ def parse_args():
     parser.add_argument(
         "--total-time-steps",
         type=int,
-        default=500_000,
+        default=50_000,
         help="Total number of environment time steps",
     )
     parser.add_argument(
@@ -120,7 +125,7 @@ def parse_args():
     parser.add_argument(
         "--track",
         type=lambda x: bool(strtobool(x)),
-        default=True,
+        default=False,
         nargs="?",
         const=True,
         help="Whether to track experiment on wandb",
